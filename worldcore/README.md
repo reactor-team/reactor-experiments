@@ -110,4 +110,4 @@ The WorldCore model (`hy-world`) exposes the following commands:
 
 ## License
 
-Copyright (c) 2025 Reactor Technologies, Inc. All rights reserved.
+Copyright (c) 2026 Reactor Technologies, Inc. All rights reserved.

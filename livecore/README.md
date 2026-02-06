@@ -55,8 +55,6 @@ Open [http://localhost:3000](http://localhost:3000) to see the app.
 
 LiveCore is a frame-level autoregressive framework for real-time and interactive long video generation.
 
-Developed by Shuai Yang, Wei Huang, Ruihang Chu, Yicheng Xiao, Yuyang Zhao, Xianbang Wang, Muyang Li, Enze Xie, Yingcong Chen, Yao Lu, Song Han, and Yukang Chen (NVIDIA Labs)
-
 ## Learn More
 
 - [Reactor Website](https://reactor.inc) - Learn more about Reactor and our platform
