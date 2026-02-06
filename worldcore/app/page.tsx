@@ -40,66 +40,6 @@ function ResetButton() {
   );
 }
 
-// Speed controls component (needs to be inside ReactorProvider)
-function SpeedControls() {
-  const { sendCommand, status } = useReactor((state) => ({
-    sendCommand: state.sendCommand,
-    status: state.status,
-  }));
-
-  const [movementSpeed, setMovementSpeed] = useState(1.0);
-  const [rotationSpeed, setRotationSpeed] = useState(1.0);
-
-  const handleMovementSpeedChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const speed = parseFloat(e.target.value);
-    setMovementSpeed(speed);
-    if (status === "ready") {
-      void sendCommand("set_movement_speed", { speed });
-    }
-  };
-
-  const handleRotationSpeedChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const speed = parseFloat(e.target.value);
-    setRotationSpeed(speed);
-    if (status === "ready") {
-      void sendCommand("set_rotation_speed", { speed });
-    }
-  };
-
-  if (status !== "ready") return null;
-
-  return (
-    <div className="flex items-center gap-4 px-3 py-2 bg-black/40 backdrop-blur-sm rounded-lg border border-white/10">
-      <div className="flex items-center gap-2">
-        <span className="text-[10px] text-white/70 uppercase tracking-wide">Move</span>
-        <input
-          type="range"
-          min="0"
-          max="1"
-          step="0.1"
-          value={movementSpeed}
-          onChange={handleMovementSpeedChange}
-          className="w-16 h-1 bg-white/20 rounded-lg appearance-none cursor-pointer accent-primary"
-        />
-        <span className="text-[10px] text-white/70 font-mono w-6">{movementSpeed.toFixed(1)}</span>
-      </div>
-      <div className="w-px h-4 bg-white/20" />
-      <div className="flex items-center gap-2">
-        <span className="text-[10px] text-white/70 uppercase tracking-wide">Rotate</span>
-        <input
-          type="range"
-          min="0"
-          max="1"
-          step="0.1"
-          value={rotationSpeed}
-          onChange={handleRotationSpeedChange}
-          className="w-16 h-1 bg-white/20 rounded-lg appearance-none cursor-pointer accent-accent"
-        />
-        <span className="text-[10px] text-white/70 font-mono w-6">{rotationSpeed.toFixed(1)}</span>
-      </div>
-    </div>
-  );
-}
 
 export default function Page() {
   const [jwtToken, setJwtToken] = useState<string | undefined>(undefined);
@@ -170,11 +110,6 @@ export default function Page() {
               {/* Top-left: Reset button */}
               <div className="absolute top-3 left-3 pointer-events-auto">
                 <ResetButton />
-              </div>
-
-              {/* Top-center: Speed controls */}
-              <div className="absolute top-3 left-1/2 -translate-x-1/2 pointer-events-auto">
-                <SpeedControls />
               </div>
 
               {/* Top-right: Fullscreen toggle */}
