@@ -178,8 +178,8 @@ export function FilmDirector({
 
   // Resizable panel state - timeline height in pixels
   const containerRef = useRef<HTMLDivElement>(null);
-  const [timelineHeight, setTimelineHeight] = useState(280);
-  const minTimelineHeight = 150;
+  const [timelineHeight, setTimelineHeight] = useState(200);
+  const minTimelineHeight = 120;
   const maxTimelineHeight = 500;
 
   const handleResize = useCallback((deltaY: number) => {
@@ -192,7 +192,7 @@ export function FilmDirector({
   return (
     <div ref={containerRef} className={cn("flex flex-col h-full bg-background", className)}>
       {/* Video preview area - takes remaining space */}
-      <div className="flex-1 min-h-0 p-4 pb-2">
+      <div className="flex-1 min-h-0 p-2 pb-1">
         <VideoPreview
           currentFrame={currentFrame}
           isPaused={isPaused}
@@ -200,21 +200,19 @@ export function FilmDirector({
         />
       </div>
 
-      {/* Current prompt display - prominent below video */}
-      <div className="px-4 pb-2">
-        <div className="bg-card border border-border rounded-lg px-4 py-3">
-          <div className="flex items-start gap-3">
-            <span className="text-xs text-muted-foreground uppercase tracking-wide shrink-0 pt-0.5">
-              Current Prompt
-            </span>
-            <p className="text-sm text-foreground flex-1">
-              {currentPrompt || (
-                <span className="text-muted-foreground italic">
-                  No prompt active — click on the timeline to add one at frame 0
-                </span>
-              )}
-            </p>
-          </div>
+      {/* Current prompt display - single line, truncated */}
+      <div className="px-4 pb-1">
+        <div className="bg-card border border-border rounded px-3 py-1.5 flex items-center gap-2 min-w-0">
+          <span className="text-[10px] text-muted-foreground uppercase tracking-wide shrink-0">
+            Prompt
+          </span>
+          <p className="text-xs text-foreground truncate min-w-0 flex-1">
+            {currentPrompt || (
+              <span className="text-muted-foreground italic">
+                No prompt — click the timeline to add one at frame 0
+              </span>
+            )}
+          </p>
         </div>
       </div>
 
