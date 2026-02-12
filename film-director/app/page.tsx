@@ -45,7 +45,7 @@ export default function Page() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <ReactorProvider
-        modelName="livecore"
+        modelName="longlive"
         jwtToken={jwtToken}
         local={isLocalMode}
         autoConnect={false}
