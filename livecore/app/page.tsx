@@ -50,7 +50,7 @@ export default function Home() {
   return (
     <div className="h-screen flex flex-col bg-background text-foreground overflow-hidden">
       <ReactorProvider
-        modelName="longlive"
+        modelName="livecore"
         jwtToken={jwtToken}
         local={isLocalMode}
         autoConnect={false}
