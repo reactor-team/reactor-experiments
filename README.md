@@ -2,7 +2,7 @@
 
 Small experiments & demos built on the Reactor developer platform.
 
-All examples use the **[Livecore](https://docs.reactor.inc/overview)** model — a frame-level autoregressive framework for real-time and interactive long video generation.
+All examples use the **[Livecore](https://docs.reactor.inc/models/livecore)** model — a frame-level autoregressive framework for real-time and interactive long video generation.
 
 ## Examples
 
