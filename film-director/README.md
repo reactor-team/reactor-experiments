@@ -22,19 +22,7 @@ Generation requires at least one prompt placed at frame 0 before you can start.
 pnpm install
 ```
 
-### 2. Set up your API key
-
-```bash
-cp .env.example .env.local
-```
-
-Add your Reactor API key to `.env.local`:
-
-```
-NEXT_PUBLIC_REACTOR_API_KEY=your_key_here
-```
-
-### 3. Run the dev server
+### 2. Run the dev server
 
 ```bash
 pnpm dev

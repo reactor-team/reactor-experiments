@@ -19,19 +19,7 @@ A minimal Next.js demo showing how to use the Reactor JS SDK with the **Livecore
 pnpm install
 ```
 
-### 2. Set up your API key
-
-```bash
-cp .env.example .env.local
-```
-
-Add your Reactor API key to `.env.local`:
-
-```
-NEXT_PUBLIC_REACTOR_API_KEY=your_key_here
-```
-
-### 3. Run the dev server
+### 2. Run the dev server
 
 ```bash
 pnpm dev
