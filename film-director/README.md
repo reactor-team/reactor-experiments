@@ -1,36 +1,48 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# film-director
+
+A more advanced Next.js demo that gives you a timeline-based editor for directing Livecore video generation frame by frame — similar to a video editing tool.
+
+## What It Does
+
+- **Timeline editor** — click anywhere on the timeline to place a prompt at a specific frame; the model will transition to that prompt when it reaches that frame
+- **Playhead** — a scrubber shows your current position as generation progresses
+- **Transport controls** — play, pause, resume, and stop/reset generation
+- **Prompt management** — add, edit, and delete scheduled prompts directly on the timeline
+- **Resizable panels** — drag the divider between the video preview and timeline to adjust the layout
+- **Fullscreen mode** — expand to fill the screen for a cleaner viewing experience
+- **Live status** — the current active prompt and frame position are always visible
+
+Generation requires at least one prompt placed at frame 0 before you can start.
 
 ## Getting Started
 
-First, run the development server:
+### 1. Install dependencies
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 2. Set up your API key
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+cp .env.example .env.local
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Add your Reactor API key to `.env.local`:
+
+```
+NEXT_PUBLIC_REACTOR_API_KEY=your_key_here
+```
+
+### 3. Run the dev server
+
+```bash
+pnpm dev
+```
+
+Open [http://localhost:3000](http://localhost:3000).
 
 ## Learn More
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- [Reactor Docs](https://docs.reactor.inc/overview)
+- [Discord](https://discord.gg/xSbBWECQRk) — reach out if you have questions or run into issues

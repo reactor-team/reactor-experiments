@@ -1,65 +1,45 @@
-# LiveCore Example
+# livecore
 
-A simple demo application showcasing the Reactor JS SDK with the **livecore** video generation model.
+A minimal Next.js demo showing how to use the Reactor JS SDK with the **Livecore** model. Good starting point if you're new to the platform.
 
-## What This Example Does
+## What It Does
 
-This Next.js app demonstrates how to:
-
-- Connect to Reactor's livecore model for AI video generation
-- Send prompts at specific timestamps to guide video creation
-- Display real-time video output with `ReactorView`
-- Track generation progress and manage model state
+- Connects to Livecore and streams real-time video output via `ReactorView`
+- Lets you send prompts by typing your own or picking from preset story suggestions
+- Automatically schedules the first prompt at frame 0 and starts generation — subsequent prompts are queued a few frames ahead of the current position so transitions are smooth
+- Shows a live frame counter (out of 240) and a running/paused indicator
+- Pause, resume, and reset generation at any time
+- Auto-resets after 240 frames
 
 ## Getting Started
 
-### 1. Install Dependencies
+### 1. Install dependencies
 
 ```bash
-npm install
-# or
 pnpm install
 ```
 
-### 2. Set Up Your API Keys
-
-Copy the example environment file and add your API keys:
+### 2. Set up your API key
 
 ```bash
 cp .env.example .env.local
 ```
 
-Edit `.env.local` and add:
+Add your Reactor API key to `.env.local`:
 
-- `NEXT_PUBLIC_REACTOR_API_KEY` - Your Reactor API key
+```
+NEXT_PUBLIC_REACTOR_API_KEY=your_key_here
+```
 
-### 3. Run the Development Server
+### 3. Run the dev server
 
 ```bash
-npm run dev
-# or
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) to see the app.
-
-## How to Use
-
-1. **Text Input**: Enter a prompt in the text field and click "Send"
-2. **Voice Input**: Click the microphone button to record your prompt, click again to stop and transcribe
-3. Watch as the livecore model generates video based on your prompts
-4. Add additional prompts to guide the video generation in real-time
-5. Track the current frame position to see where you are in the generation
-
-## About the LiveCore Model
-
-LiveCore is a frame-level autoregressive framework for real-time and interactive long video generation.
+Open [http://localhost:3000](http://localhost:3000).
 
 ## Learn More
 
-- [Reactor Website](https://reactor.inc) - Learn more about Reactor and our platform
-- [Reactor Documentation](https://docs.reactor.inc) - Learn about Reactor's AI models and SDK
-
-## Support
-
-For questions or issues, contact our support team at [team@reactor.inc](mailto:team@reactor.inc).
+- [Reactor Docs](https://docs.reactor.inc/overview)
+- [Discord](https://discord.gg/xSbBWECQRk) — reach out if you have questions or run into issues
