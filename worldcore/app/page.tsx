@@ -44,7 +44,9 @@ function ResetButton() {
 export default function Page() {
   const [jwtToken, setJwtToken] = useState<string | undefined>(undefined);
   const [isLocalMode, setIsLocalMode] = useState(false);
+  const [port, setPort] = useState("8080");
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const coordinatorUrl = isLocalMode ? `http://localhost:${port}` : undefined;
 
   // Ensure dark mode is applied to html element
   useEffect(() => {
@@ -80,6 +82,7 @@ export default function Page() {
         modelName="worldcore"
         jwtToken={jwtToken}
         local={isLocalMode}
+        coordinatorUrl={coordinatorUrl}
         autoConnect={false}
       >
         {/* Header */}
@@ -93,6 +96,9 @@ export default function Page() {
               <ConnectionPanel
                 onJwtTokenChange={setJwtToken}
                 onLocalModeChange={setIsLocalMode}
+                isLocalMode={isLocalMode}
+                port={port}
+                onPortChange={setPort}
                 className="shrink-0"
               />
             )}

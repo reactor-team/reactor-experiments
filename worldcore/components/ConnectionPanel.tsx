@@ -9,12 +9,18 @@ import { cn } from "@/lib/utils";
 interface ConnectionPanelProps {
   onJwtTokenChange: (token: string | undefined) => void;
   onLocalModeChange: (isLocal: boolean) => void;
+  isLocalMode: boolean;
+  port: string;
+  onPortChange: (port: string) => void;
   className?: string;
 }
 
 export function ConnectionPanel({
   onJwtTokenChange,
   onLocalModeChange,
+  isLocalMode: isLocalModeProp,
+  port,
+  onPortChange,
   className,
 }: ConnectionPanelProps) {
   const { status, connect, disconnect } = useReactor((state) => ({
@@ -26,31 +32,29 @@ export function ConnectionPanel({
   const [apiKey, setApiKey] = useState("");
   const [isFetching, setIsFetching] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isLocalMode, setIsLocalMode] = useState(false);
 
   // Memoize callbacks to prevent unnecessary effect triggers
   const handleJwtChange = useCallback(onJwtTokenChange, [onJwtTokenChange]);
-  const handleLocalChange = useCallback(onLocalModeChange, [onLocalModeChange]);
 
   const isConnecting = status === "connecting" || status === "waiting";
   const isConnected = status === "ready";
 
-  useEffect(() => {
-    // Check if user entered "local" to enable local mode
-    if (apiKey.toLowerCase() === "local") {
-      setIsLocalMode(true);
-      handleLocalChange(true);
+  // Toggle local mode
+  const toggleLocalMode = useCallback(() => {
+    const newLocal = !isLocalModeProp;
+    onLocalModeChange(newLocal);
+    if (newLocal) {
+      // Switching to local: clear API key and JWT
+      setApiKey("");
       handleJwtChange(undefined);
       setError(null);
-      return;
     }
+  }, [isLocalModeProp, onLocalModeChange, handleJwtChange]);
 
-    // Not local mode
-    setIsLocalMode(false);
-    handleLocalChange(false);
-
-    if (!apiKey) {
-      handleJwtChange(undefined);
+  // Fetch JWT when API key changes (cloud mode only)
+  useEffect(() => {
+    if (isLocalModeProp || !apiKey) {
+      if (!isLocalModeProp) handleJwtChange(undefined);
       setError(null);
       return;
     }
@@ -70,41 +74,77 @@ export function ConnectionPanel({
     }, 500);
 
     return () => clearTimeout(timeoutId);
-  }, [apiKey, handleJwtChange, handleLocalChange]);
+  }, [apiKey, isLocalModeProp, handleJwtChange]);
 
   return (
     <div className={cn("flex flex-col sm:flex-row items-stretch sm:items-center gap-3 p-4 bg-card rounded-lg border border-border", className)}>
-      {/* API Key Input */}
+      {/* Local Mode Toggle */}
+      <button
+        type="button"
+        onClick={toggleLocalMode}
+        disabled={isConnected}
+        className={cn(
+          "flex items-center gap-2 px-3 py-1.5 rounded-md border text-sm font-medium transition-colors shrink-0",
+          isLocalModeProp
+            ? "bg-green-500/20 border-green-500/50 text-green-400"
+            : "bg-muted border-border text-muted-foreground hover:text-foreground",
+          isConnected && "opacity-50 cursor-not-allowed"
+        )}
+      >
+        <div className={cn(
+          "w-2 h-2 rounded-full",
+          isLocalModeProp ? "bg-green-500" : "bg-muted-foreground"
+        )} />
+        Local
+      </button>
+
+      {/* API Key Input (cloud mode) or Port Input (local mode) */}
       <div className="flex-1 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-        <label className="text-sm font-medium text-foreground whitespace-nowrap">
-          API Key
-        </label>
-        <div className="relative flex-1">
-          <Input
-            type="password"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder="Enter your API key (rk_...)"
-            disabled={isConnected}
-            className={cn(
-              "h-9 text-sm pr-8",
-              isLocalMode && "border-green-500/50",
-              error && "border-destructive"
-            )}
-          />
-          {/* Status indicators */}
-          <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
-            {isFetching && (
-              <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-            )}
-            {isLocalMode && !isFetching && (
-              <span className="text-[10px] text-green-500 font-medium uppercase">Local</span>
-            )}
-            {error && !isFetching && (
-              <span className="w-2 h-2 bg-destructive rounded-full" title={error} />
-            )}
-          </div>
-        </div>
+        {isLocalModeProp ? (
+          <>
+            <label className="text-sm font-medium text-foreground whitespace-nowrap">
+              Port
+            </label>
+            <Input
+              type="text"
+              value={port}
+              onChange={(e) => onPortChange(e.target.value)}
+              placeholder="8080"
+              disabled={isConnected}
+              className="h-9 text-sm w-24 border-green-500/50"
+            />
+            <span className="text-xs text-muted-foreground">
+              localhost:{port}
+            </span>
+          </>
+        ) : (
+          <>
+            <label className="text-sm font-medium text-foreground whitespace-nowrap">
+              API Key
+            </label>
+            <div className="relative flex-1">
+              <Input
+                type="password"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder="Enter your API key (rk_...)"
+                disabled={isConnected}
+                className={cn(
+                  "h-9 text-sm pr-8",
+                  error && "border-destructive"
+                )}
+              />
+              <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                {isFetching && (
+                  <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                )}
+                {error && !isFetching && (
+                  <span className="w-2 h-2 bg-destructive rounded-full" title={error} />
+                )}
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Connection Button */}
@@ -127,20 +167,20 @@ export function ConnectionPanel({
 
         {/* Connect/Disconnect button */}
         {status === "disconnected" ? (
-          <Button 
-            size="default" 
-            variant="default" 
+          <Button
+            size="default"
+            variant="default"
             onClick={() => connect()}
-            disabled={!apiKey && !isLocalMode}
+            disabled={!isLocalModeProp && !apiKey}
             className="min-w-[100px]"
           >
             Connect
           </Button>
         ) : (
-          <Button 
-            size="default" 
-            variant="secondary" 
-            onClick={() => disconnect()} 
+          <Button
+            size="default"
+            variant="secondary"
+            onClick={() => disconnect()}
             className="min-w-[100px]"
           >
             {isConnecting ? "Cancel" : "Disconnect"}
