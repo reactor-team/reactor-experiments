@@ -15,15 +15,11 @@ interface PromptInputProps {
 // State message from model
 interface ModelState {
   chunk_index: number;
-  current_prompt: string | null;
-  current_keyboard_action: string;
-  current_camera_action: string;
-  current_movement_speed: number;
-  current_rotation_speed: number;
-  pending_keyboard_action: string;
-  pending_camera_action: string;
-  pending_movement_speed: number;
-  pending_rotation_speed: number;
+  prompt: string | null;
+  keyboard_action: string;
+  camera_action: string;
+  movement_speed: number;
+  rotation_speed: number;
 }
 
 interface StateMessage {
@@ -60,12 +56,12 @@ export function PromptInput({ className = "", openaiKey = "" }: PromptInputProps
   useReactorMessage((message: StateMessage) => {
     if (message?.type === "state" && message.data) {
       // Clear input and current prompt display on model reset
-      if (message.data.chunk_index === 0 && message.data.current_prompt === null) {
+      if (message.data.chunk_index === 0 && message.data.prompt === null) {
         setPrompt("");
         setCurrentPrompt(null);
         return;
       }
-      setCurrentPrompt(message.data.current_prompt);
+      setCurrentPrompt(message.data.prompt);
     }
   });
 
