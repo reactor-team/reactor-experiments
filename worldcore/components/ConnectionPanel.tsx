@@ -12,6 +12,8 @@ interface ConnectionPanelProps {
   isLocalMode: boolean;
   port: string;
   onPortChange: (port: string) => void;
+  framesPerChunk: number;
+  onFramesPerChunkChange: (value: number) => void;
   className?: string;
 }
 
@@ -21,6 +23,8 @@ export function ConnectionPanel({
   isLocalMode: isLocalModeProp,
   port,
   onPortChange,
+  framesPerChunk,
+  onFramesPerChunkChange,
   className,
 }: ConnectionPanelProps) {
   const { status, connect, disconnect } = useReactor((state) => ({
@@ -145,6 +149,23 @@ export function ConnectionPanel({
             </div>
           </>
         )}
+      </div>
+
+      {/* Frames per chunk */}
+      <div className="flex items-center gap-2 shrink-0">
+        <label className="text-sm font-medium text-foreground whitespace-nowrap">
+          Frames/chunk
+        </label>
+        <Input
+          type="number"
+          min={1}
+          value={framesPerChunk}
+          onChange={(e) => {
+            const v = parseInt(e.target.value, 10);
+            if (v > 0) onFramesPerChunkChange(v);
+          }}
+          className="h-9 text-sm w-20"
+        />
       </div>
 
       {/* Connection Button */}

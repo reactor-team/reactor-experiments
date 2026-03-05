@@ -1,14 +1,15 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { ReactorProvider, ReactorView } from "@reactor-team/js-sdk";
 import { HeaderControls } from "@/components/HeaderControls";
 import { ConnectionPanel } from "@/components/ConnectionPanel";
 import { OverlayControls } from "@/components/OverlayControls";
 import { ImageUploader } from "@/components/ImageUploader";
+import { PromptInput } from "@/components/PromptInput";
 import { Button } from "@/components/ui/button";
-import { useReactor } from "@reactor-team/js-sdk";
-import { Maximize2, Minimize2 } from "lucide-react";
+import { useReactor, useReactorMessage } from "@reactor-team/js-sdk";
+import { Maximize2, Minimize2, Pause, Play } from "lucide-react";
 
 // Reset button component (needs to be inside ReactorProvider)
 function ResetButton() {
@@ -40,12 +41,95 @@ function ResetButton() {
   );
 }
 
+// Pause/Resume toggle button (needs to be inside ReactorProvider)
+function PauseButton() {
+  const [paused, setPaused] = useState(false);
+  const { sendCommand, status } = useReactor((state) => ({
+    sendCommand: state.sendCommand,
+    status: state.status,
+  }));
+
+  // Reset paused state when the model restarts (e.g. after a reset command)
+  useReactorMessage((message: { type?: string; data?: { chunk_index?: number } }) => {
+    if (message?.type === "state" && message.data?.chunk_index === 0) {
+      setPaused(false);
+    }
+  });
+
+  const handleToggle = async () => {
+    const command = paused ? "resume" : "pause";
+    try {
+      await sendCommand(command, {});
+      setPaused(!paused);
+      console.log(`${command} command sent`);
+    } catch (error) {
+      console.error(`Failed to send ${command}:`, error);
+    }
+  };
+
+  if (status !== "ready") return null;
+
+  return (
+    <Button
+      size="xs"
+      variant="secondary"
+      onClick={handleToggle}
+      className="backdrop-blur-sm bg-black/40 border-white/10 hover:bg-black/60"
+    >
+      {paused ? (
+        <Play className="w-3.5 h-3.5" />
+      ) : (
+        <Pause className="w-3.5 h-3.5" />
+      )}
+      {paused ? "Resume" : "Pause"}
+    </Button>
+  );
+}
+
+
+function FpsDisplay({ framesPerChunk }: { framesPerChunk: number }) {
+  const { status } = useReactor((state) => ({ status: state.status }));
+  const [fps, setFps] = useState<number | null>(null);
+  const lastRef = useRef<{ chunkIndex: number; time: number } | null>(null);
+
+  useReactorMessage((message: { type?: string; data?: { chunk_index?: number } }) => {
+    if (message?.type !== "state" || message.data?.chunk_index == null) return;
+    const now = performance.now();
+    const chunkIndex = message.data.chunk_index;
+    const prev = lastRef.current;
+    if (prev !== null && chunkIndex > prev.chunkIndex) {
+      const dt = (now - prev.time) / 1000;
+      if (dt > 0) {
+        const chunksPerSec = (chunkIndex - prev.chunkIndex) / dt;
+        setFps(chunksPerSec * framesPerChunk);
+      }
+    }
+    lastRef.current = { chunkIndex, time: now };
+  });
+
+  // Reset when disconnected
+  useEffect(() => {
+    if (status !== "ready") {
+      setFps(null);
+      lastRef.current = null;
+    }
+  }, [status]);
+
+  if (status !== "ready" || fps === null) return null;
+
+  return (
+    <div className="text-xs font-mono text-white/70 bg-black/40 px-1.5 py-0.5 rounded backdrop-blur-sm">
+      {Math.round(fps)} FPS
+    </div>
+  );
+}
 
 export default function Page() {
   const [jwtToken, setJwtToken] = useState<string | undefined>(undefined);
   const [isLocalMode, setIsLocalMode] = useState(false);
   const [port, setPort] = useState("8080");
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [framesPerChunk, setFramesPerChunk] = useState(16);
   const coordinatorUrl = isLocalMode ? `http://localhost:${port}` : undefined;
 
   // Ensure dark mode is applied to html element
@@ -99,6 +183,8 @@ export default function Page() {
                 isLocalMode={isLocalMode}
                 port={port}
                 onPortChange={setPort}
+                framesPerChunk={framesPerChunk}
+                onFramesPerChunkChange={setFramesPerChunk}
                 className="shrink-0"
               />
             )}
@@ -113,9 +199,11 @@ export default function Page() {
               {/* Overlay controls - float on top */}
               <OverlayControls className="absolute inset-0" />
 
-              {/* Top-left: Reset button */}
-              <div className="absolute top-3 left-3 pointer-events-auto">
+              {/* Top-left: Reset + Pause buttons + FPS */}
+              <div className="absolute top-3 left-3 pointer-events-auto flex items-center gap-2">
                 <ResetButton />
+                <PauseButton />
+                <FpsDisplay framesPerChunk={framesPerChunk} />
               </div>
 
               {/* Top-right: Fullscreen toggle */}
@@ -141,6 +229,7 @@ export default function Page() {
                 ? "p-3 flex gap-3 bg-card border-t border-border" 
                 : "p-3 flex gap-3 bg-card rounded-lg border border-border"
             }`}>
+              <PromptInput className="border-0 p-0 bg-transparent flex-1" />
               <ImageUploader className="border-0 p-0 bg-transparent" />
             </div>
           </div>
