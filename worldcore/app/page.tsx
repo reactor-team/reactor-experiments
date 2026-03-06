@@ -10,6 +10,7 @@ import { PromptInput } from "@/components/PromptInput";
 import { Button } from "@/components/ui/button";
 import { useReactor, useReactorMessage } from "@reactor-team/js-sdk";
 import { Maximize2, Minimize2, Pause, Play } from "lucide-react";
+import { ENDPOINTS, type Endpoint } from "@/lib/endpoints";
 
 // Reset button component (needs to be inside ReactorProvider)
 function ResetButton() {
@@ -126,11 +127,12 @@ function FpsDisplay({ framesPerChunk }: { framesPerChunk: number }) {
 
 export default function Page() {
   const [jwtToken, setJwtToken] = useState<string | undefined>(undefined);
-  const [isLocalMode, setIsLocalMode] = useState(false);
+  const [endpoint, setEndpoint] = useState<Endpoint>(ENDPOINTS[0]);
+  const [modelName, setModelName] = useState("hy-world");
   const [port, setPort] = useState("8080");
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [framesPerChunk, setFramesPerChunk] = useState(16);
-  const coordinatorUrl = isLocalMode ? `http://localhost:${port}` : undefined;
+  const [framesPerChunk, setFramesPerChunk] = useState(32);
+  const coordinatorUrl = endpoint.local ? `http://localhost:${port}` : endpoint.url;
 
   // Ensure dark mode is applied to html element
   useEffect(() => {
@@ -163,9 +165,9 @@ export default function Page() {
   return (
     <div className="h-screen flex flex-col bg-background text-foreground overflow-hidden">
       <ReactorProvider
-        modelName="worldcore"
+        modelName={modelName}
         jwtToken={jwtToken}
-        local={isLocalMode}
+        local={endpoint.local}
         coordinatorUrl={coordinatorUrl}
         autoConnect={false}
       >
@@ -179,8 +181,10 @@ export default function Page() {
             {!isFullscreen && (
               <ConnectionPanel
                 onJwtTokenChange={setJwtToken}
-                onLocalModeChange={setIsLocalMode}
-                isLocalMode={isLocalMode}
+                endpoint={endpoint}
+                onEndpointChange={setEndpoint}
+                modelName={modelName}
+                onModelNameChange={setModelName}
                 port={port}
                 onPortChange={setPort}
                 framesPerChunk={framesPerChunk}
