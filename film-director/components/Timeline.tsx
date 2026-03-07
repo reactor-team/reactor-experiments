@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState, memo, useMemo } from "react";
-import { MAX_FRAMES, FPS } from "@/lib/constants";
+import { MAX_CHUNKS, FRAMES_PER_CHUNK, FPS } from "@/lib/constants";
 import { TimelineRuler } from "./TimelineRuler";
 import { PromptMarker } from "./PromptMarker";
 import { Playhead } from "./Playhead";
@@ -9,144 +9,129 @@ import { PromptEditor } from "./PromptEditor";
 import { cn } from "@/lib/utils";
 
 interface TimelineProps {
-  currentFrame: number;
+  currentChunk: number;
   currentPrompt: string | null;
   scheduledPrompts: Record<number, string>;
-  maxFrames?: number;
-  onAddPrompt: (frame: number, prompt: string) => void;
-  onEditPrompt: (frame: number, prompt: string) => void;
-  onDeletePrompt: (frame: number) => void;
+  maxChunks?: number;
+  onAddPrompt: (chunk: number, prompt: string) => void;
+  onEditPrompt: (chunk: number, prompt: string) => void;
+  onDeletePrompt: (chunk: number) => void;
   disabled?: boolean;
   className?: string;
 }
 
 function TimelineComponent({
-  currentFrame,
-  currentPrompt: _currentPrompt, // Reserved for future use
+  currentChunk,
+  currentPrompt: _currentPrompt,
   scheduledPrompts,
-  maxFrames = MAX_FRAMES,
+  maxChunks = MAX_CHUNKS,
   onAddPrompt,
   onEditPrompt,
   onDeletePrompt,
   disabled = false,
   className,
 }: TimelineProps) {
-  void _currentPrompt; // Suppress unused warning
+  void _currentPrompt;
   const trackRef = useRef<HTMLDivElement>(null);
 
-  // Editor state
   const [editorOpen, setEditorOpen] = useState(false);
-  const [editingFrame, setEditingFrame] = useState(0);
+  const [editingChunk, setEditingChunk] = useState(0);
   const [editingPrompt, setEditingPrompt] = useState("");
   const [isEditMode, setIsEditMode] = useState(false);
 
-  // Hover tooltip state - store position calculated during event handler
-  const [hoverFrame, setHoverFrame] = useState<number | null>(null);
+  const [hoverChunk, setHoverChunk] = useState<number | null>(null);
   const [hoverY, setHoverY] = useState(0);
   const [tooltipX, setTooltipX] = useState(0);
 
-  // Find which prompt is currently active (largest frame <= currentFrame)
-  const activePromptFrame = useMemo(() => {
-    const frames = Object.keys(scheduledPrompts)
+  const activePromptChunk = useMemo(() => {
+    const chunks = Object.keys(scheduledPrompts)
       .map(Number)
-      .filter((f) => f <= currentFrame)
+      .filter((c) => c <= currentChunk)
       .sort((a, b) => b - a);
-    return frames[0] ?? null;
-  }, [scheduledPrompts, currentFrame]);
+    return chunks[0] ?? null;
+  }, [scheduledPrompts, currentChunk]);
 
-  // Calculate frame from mouse position
-  const getFrameFromMouseEvent = useCallback(
+  const getChunkFromMouseEvent = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (!trackRef.current) return null;
 
       const rect = trackRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const percentage = x / rect.width;
-      const frame = Math.round(percentage * maxFrames);
+      const chunk = Math.round(percentage * maxChunks);
 
-      // Clamp to valid range
-      return Math.max(0, Math.min(maxFrames - 1, frame));
+      return Math.max(0, Math.min(maxChunks - 1, chunk));
     },
-    [maxFrames]
+    [maxChunks]
   );
 
-  // Handle mouse move for hover tooltip
   const handleMouseMove = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
-      const frame = getFrameFromMouseEvent(e);
-      if (frame !== null && trackRef.current) {
-        setHoverFrame(frame);
+      const chunk = getChunkFromMouseEvent(e);
+      if (chunk !== null && trackRef.current) {
+        setHoverChunk(chunk);
         setHoverY(e.clientY);
-        // Calculate tooltip X position here (in event handler) instead of during render
         const rect = trackRef.current.getBoundingClientRect();
-        setTooltipX(rect.left + (frame / maxFrames) * rect.width);
+        setTooltipX(rect.left + (chunk / maxChunks) * rect.width);
       }
     },
-    [getFrameFromMouseEvent, maxFrames]
+    [getChunkFromMouseEvent, maxChunks]
   );
 
-  // Handle mouse leave
   const handleMouseLeave = useCallback(() => {
-    setHoverFrame(null);
+    setHoverChunk(null);
   }, []);
 
-  // Handle clicking on the timeline track to add a new prompt
   const handleTrackClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (disabled) return;
 
-      const clampedFrame = getFrameFromMouseEvent(e);
-      if (clampedFrame === null) return;
+      const clampedChunk = getChunkFromMouseEvent(e);
+      if (clampedChunk === null) return;
 
-      // Check if there's already a prompt at this frame (within 5 frame tolerance)
-      const existingFrame = Object.keys(scheduledPrompts)
+      const existingChunk = Object.keys(scheduledPrompts)
         .map(Number)
-        .find((f) => Math.abs(f - clampedFrame) < 5);
+        .find((c) => Math.abs(c - clampedChunk) < 2);
 
-      if (existingFrame !== undefined) {
-        // Edit existing prompt
-        setEditingFrame(existingFrame);
-        setEditingPrompt(scheduledPrompts[existingFrame]);
+      if (existingChunk !== undefined) {
+        setEditingChunk(existingChunk);
+        setEditingPrompt(scheduledPrompts[existingChunk]);
         setIsEditMode(true);
       } else {
-        // Add new prompt
-        setEditingFrame(clampedFrame);
+        setEditingChunk(clampedChunk);
         setEditingPrompt("");
         setIsEditMode(false);
       }
 
       setEditorOpen(true);
     },
-    [disabled, getFrameFromMouseEvent, scheduledPrompts]
+    [disabled, getChunkFromMouseEvent, scheduledPrompts]
   );
 
-  // Handle clicking on an existing marker
   const handleMarkerClick = useCallback(
-    (frame: number) => {
+    (chunk: number) => {
       if (disabled) return;
 
-      setEditingFrame(frame);
-      setEditingPrompt(scheduledPrompts[frame] || "");
+      setEditingChunk(chunk);
+      setEditingPrompt(scheduledPrompts[chunk] || "");
       setIsEditMode(true);
       setEditorOpen(true);
     },
     [disabled, scheduledPrompts]
   );
 
-  // Handle saving a prompt
   const handleSave = useCallback(
-    (frame: number, prompt: string) => {
+    (chunk: number, prompt: string) => {
       if (isEditMode) {
-        onEditPrompt(frame, prompt);
+        onEditPrompt(chunk, prompt);
       } else {
-        onAddPrompt(frame, prompt);
+        onAddPrompt(chunk, prompt);
       }
     },
     [isEditMode, onAddPrompt, onEditPrompt]
   );
 
-  // Sorted prompt frames for rendering
-  const sortedPromptFrames = useMemo(() => {
+  const sortedPromptChunks = useMemo(() => {
     return Object.keys(scheduledPrompts)
       .map(Number)
       .sort((a, b) => a - b);
@@ -154,10 +139,8 @@ function TimelineComponent({
 
   return (
     <div className={cn("flex flex-col h-full", className)}>
-      {/* Ruler */}
-      <TimelineRuler maxFrames={maxFrames} />
+      <TimelineRuler maxChunks={maxChunks} />
 
-      {/* Track container with padding */}
       <div
         className={cn(
           "px-6 flex-1 min-h-[64px] bg-card/50 border-b border-border",
@@ -171,16 +154,16 @@ function TimelineComponent({
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
         >
-          {/* Prompt segments - show colored regions between prompts */}
-          {sortedPromptFrames.map((frame, index) => {
-            const nextFrame = sortedPromptFrames[index + 1] ?? maxFrames;
-            const startPercent = (frame / maxFrames) * 100;
-            const widthPercent = ((nextFrame - frame) / maxFrames) * 100;
-            const isActive = frame === activePromptFrame;
+          {/* Prompt segments */}
+          {sortedPromptChunks.map((chunk, index) => {
+            const nextChunk = sortedPromptChunks[index + 1] ?? maxChunks;
+            const startPercent = (chunk / maxChunks) * 100;
+            const widthPercent = ((nextChunk - chunk) / maxChunks) * 100;
+            const isActive = chunk === activePromptChunk;
 
             return (
               <div
-                key={frame}
+                key={chunk}
                 className={cn(
                   "absolute top-2 bottom-2 rounded-sm transition-colors overflow-hidden",
                   isActive
@@ -200,39 +183,38 @@ function TimelineComponent({
                     WebkitBoxOrient: "vertical",
                   }}
                 >
-                  {scheduledPrompts[frame]}
+                  {scheduledPrompts[chunk]}
                 </span>
               </div>
             );
           })}
 
           {/* Prompt markers */}
-          {sortedPromptFrames.map((frame) => (
+          {sortedPromptChunks.map((chunk) => (
             <PromptMarker
-              key={frame}
-              frame={frame}
-              prompt={scheduledPrompts[frame]}
-              maxFrames={maxFrames}
-              isActive={frame === activePromptFrame}
-              onClick={() => handleMarkerClick(frame)}
+              key={chunk}
+              chunk={chunk}
+              prompt={scheduledPrompts[chunk]}
+              maxChunks={maxChunks}
+              isActive={chunk === activePromptChunk}
+              onClick={() => handleMarkerClick(chunk)}
             />
           ))}
 
-          {/* Playhead */}
-          <Playhead frame={currentFrame} maxFrames={maxFrames} />
+          <Playhead chunk={currentChunk} maxChunks={maxChunks} />
 
           {/* Hover indicator line */}
-          {hoverFrame !== null && (
+          {hoverChunk !== null && (
             <div
               className="absolute top-0 bottom-0 w-px bg-foreground/30 pointer-events-none z-10"
-              style={{ left: `${(hoverFrame / maxFrames) * 100}%` }}
+              style={{ left: `${(hoverChunk / maxChunks) * 100}%` }}
             />
           )}
         </div>
       </div>
 
-      {/* Hover tooltip - rendered outside track to avoid clipping */}
-      {hoverFrame !== null && (
+      {/* Hover tooltip */}
+      {hoverChunk !== null && (
         <div
           className="fixed z-50 pointer-events-none"
           style={{
@@ -243,20 +225,21 @@ function TimelineComponent({
         >
           <div className="bg-popover border border-border rounded-md px-2 py-1 shadow-lg">
             <div className="text-xs font-mono text-foreground">
-              <span className="font-medium">Frame {hoverFrame}</span>
-              <span className="text-muted-foreground ml-2">({(hoverFrame / FPS).toFixed(1)}s)</span>
+              <span className="font-medium">Chunk {hoverChunk}</span>
+              <span className="text-muted-foreground ml-2">
+                (~{((hoverChunk * FRAMES_PER_CHUNK) / FPS).toFixed(1)}s)
+              </span>
             </div>
           </div>
         </div>
       )}
 
-      {/* Prompt Editor Dialog */}
       <PromptEditor
         open={editorOpen}
-        frame={editingFrame}
+        chunk={editingChunk}
         initialPrompt={editingPrompt}
         isEditing={isEditMode}
-        previousPrompts={sortedPromptFrames.map((f) => ({ frame: f, prompt: scheduledPrompts[f] }))}
+        previousPrompts={sortedPromptChunks.map((c) => ({ chunk: c, prompt: scheduledPrompts[c] }))}
         onSave={handleSave}
         onDelete={onDeletePrompt}
         onClose={() => setEditorOpen(false)}

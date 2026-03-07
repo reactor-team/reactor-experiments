@@ -1,23 +1,20 @@
 /**
- * Application constants for the Film Director demo
+ * Application constants for the Film Director demo (Helios model)
  */
 
-/** Maximum number of frames in a video generation */
-export const MAX_FRAMES = 240;
+/** Maximum number of chunks on the timeline */
+export const MAX_CHUNKS = 30;
+
+/** Frames per chunk (Helios generates 33-frame chunks) */
+export const FRAMES_PER_CHUNK = 33;
 
 /** Frames per second for display calculations */
 export const FPS = 24;
 
-/** Number of frames per block (model generates this many frames at once) */
-export const FRAMES_PER_BLOCK = 3;
+/** Timeline tick interval (in chunks) */
+export const TIMELINE_TICK_INTERVAL = 5;
 
-/** Calculate total duration in seconds */
-export const TOTAL_DURATION_SECONDS = MAX_FRAMES / FPS;
-
-/** Timeline tick interval (in frames) */
-export const TIMELINE_TICK_INTERVAL = 10;
-
-/** Show label every N ticks on the timeline (1 = every tick, 2 = every other tick, etc.) */
+/** Show label every N ticks on the timeline (1 = every tick) */
 export const TIMELINE_LABEL_EVERY_N_TICKS = 1;
 
 /** System prompt for enhancing user prompts via OpenAI */

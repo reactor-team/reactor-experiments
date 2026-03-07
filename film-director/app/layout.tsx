@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Film Director - LiveCore Demo",
-  description: "A video editor-style demo for the LiveCore model",
+  title: "Film Director - Helios Demo",
+  description: "A video editor-style demo for the Helios model",
 };
 
 export default function RootLayout({

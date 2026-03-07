@@ -4,23 +4,23 @@ import { memo } from "react";
 import { cn } from "@/lib/utils";
 
 interface PromptMarkerProps {
-  frame: number;
+  chunk: number;
   prompt: string;
-  maxFrames: number;
+  maxChunks: number;
   isActive: boolean;
   onClick: () => void;
   className?: string;
 }
 
 function PromptMarkerComponent({
-  frame,
+  chunk,
   prompt,
-  maxFrames,
+  maxChunks,
   isActive,
   onClick,
   className,
 }: PromptMarkerProps) {
-  const position = (frame / maxFrames) * 100;
+  const position = (chunk / maxChunks) * 100;
 
   return (
     <div
@@ -52,7 +52,7 @@ function PromptMarkerComponent({
       {/* Tooltip on hover */}
       <div className="absolute left-1/2 -translate-x-1/2 top-5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
         <div className="bg-popover border border-border rounded-md px-2 py-1 shadow-lg max-w-48">
-          <p className="text-[10px] text-muted-foreground">Frame {frame}</p>
+          <p className="text-[10px] text-muted-foreground">Chunk {chunk}</p>
           <p className="text-xs truncate">{prompt}</p>
         </div>
       </div>

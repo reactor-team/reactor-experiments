@@ -6,7 +6,7 @@ import Image from "next/image";
 import { ConnectionPanel } from "@/components/ConnectionPanel";
 import { FilmDirector } from "@/components/FilmDirector";
 import { Button } from "@/components/ui/button";
-import { MAX_FRAMES } from "@/lib/constants";
+import { MAX_CHUNKS } from "@/lib/constants";
 import { Maximize2, Minimize2 } from "lucide-react";
 
 export default function Page() {
@@ -45,7 +45,7 @@ export default function Page() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <ReactorProvider
-        modelName="livecore"
+        modelName="helios"
         jwtToken={jwtToken}
         local={isLocalMode}
         connectOptions={{ autoConnect: false }}
@@ -55,7 +55,7 @@ export default function Page() {
           <div className="flex items-center gap-3">
             <h1 className="text-lg font-semibold text-foreground">Film Director</h1>
             <span className="text-xs text-muted-foreground px-2 py-0.5 bg-muted rounded hidden sm:inline-block">
-              LiveCore Demo
+              Helios
             </span>
           </div>
 
@@ -116,7 +116,7 @@ export default function Page() {
                 : "bg-card rounded-lg border border-border overflow-hidden"
             }`}>
               <FilmDirector 
-                maxFrames={MAX_FRAMES} 
+                maxChunks={MAX_CHUNKS} 
                 className={isFullscreen ? "h-full" : "h-[70vh] min-h-[500px]"} 
               />
             </div>
