@@ -10,6 +10,10 @@ import { TransportControls } from "./TransportControls";
 import { FrameDisplay } from "./FrameDisplay";
 import { ResizableDivider } from "./ResizableDivider";
 import { cn } from "@/lib/utils";
+import { encodeTimeline, decodeTimeline } from "@/lib/share";
+import { ShareDialog } from "./ShareDialog";
+import { Share2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface FilmDirectorProps {
   maxChunks?: number;
@@ -27,6 +31,8 @@ export function FilmDirector({
   const [isRunning, setIsRunning] = useState(false);
   const [scheduledPrompts, setScheduledPrompts] = useState<Record<number, string>>({});
   const [isFinished, setIsFinished] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareUrl, setShareUrl] = useState("");
   const [toasts, setToasts] = useState<{ id: number; message: string }[]>([]);
   const toastIdRef = useRef(0);
 
@@ -82,6 +88,20 @@ export function FilmDirector({
       );
     }
   }, [currentChunk, maxChunks, isRunning, isPaused, sendCommand]);
+
+  // Load shared timeline from URL fragment on mount
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (!hash.startsWith("#s=")) return;
+    const encoded = hash.slice(3);
+    decodeTimeline(encoded)
+      .then((prompts) => {
+        if (Object.keys(prompts).length > 0) {
+          setScheduledPrompts(prompts);
+        }
+      })
+      .catch((err) => console.error("[FilmDirector] Failed to load shared timeline:", err));
+  }, []);
 
   const prevStatusRef = useRef(status);
   useEffect(() => {
@@ -195,7 +215,20 @@ export function FilmDirector({
     console.warn("[FilmDirector] Prompt deleted locally. Reset to sync with model.");
   }, []);
 
+  const handleShare = useCallback(async () => {
+    if (Object.keys(scheduledPrompts).length === 0) return;
+    try {
+      const encoded = await encodeTimeline(scheduledPrompts);
+      const url = `${window.location.origin}${window.location.pathname}#s=${encoded}`;
+      setShareUrl(url);
+      setShareOpen(true);
+    } catch (error) {
+      console.error("[FilmDirector] Failed to generate share link:", error);
+    }
+  }, [scheduledPrompts]);
+
   const canStart = 0 in scheduledPrompts;
+  const hasPrompts = Object.keys(scheduledPrompts).length > 0;
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [timelineHeight, setTimelineHeight] = useState(200);
@@ -275,6 +308,17 @@ export function FilmDirector({
           />
           
           <div className="flex-1" />
+
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleShare}
+            disabled={!hasPrompts}
+            className="gap-1.5 text-foreground"
+          >
+            <Share2 className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Share</span>
+          </Button>
         </div>
 
         {/* Timeline */}
@@ -292,6 +336,8 @@ export function FilmDirector({
           />
         </div>
       </div>
+
+      <ShareDialog open={shareOpen} shareUrl={shareUrl} onClose={() => setShareOpen(false)} />
 
       {/* Error toasts */}
       {toasts.length > 0 && (

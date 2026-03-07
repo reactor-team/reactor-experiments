@@ -14,7 +14,8 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Trash2, Sparkles, Loader2 } from "lucide-react";
+import { Trash2, Sparkles, Loader2, Video } from "lucide-react";
+import { MOVEMENTS } from "@/lib/movements";
 
 interface PromptEditorProps {
   open: boolean;
@@ -47,6 +48,7 @@ export function PromptEditor({
       setPrompt(initialPrompt);
       setEnhancedPrompt("");
       setEnhanceError(null);
+      setIsApplyingMovement(false);
     }
   }, [open, initialPrompt]);
 
@@ -89,6 +91,37 @@ export function PromptEditor({
     }
   }, [prompt, previousPrompts, chunk]);
 
+  const [isApplyingMovement, setIsApplyingMovement] = useState(false);
+
+  const handleAddMovement = useCallback(async (instruction: string) => {
+    const basePrompt = enhancedPrompt.trim() || prompt.trim();
+    if (!basePrompt) return;
+
+    setIsApplyingMovement(true);
+    setEnhanceError(null);
+
+    try {
+      const response = await fetch("/api/apply-movement", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: basePrompt, instruction }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to apply movement");
+      }
+
+      setEnhancedPrompt(data.enhancedPrompt);
+    } catch (error) {
+      console.error("[PromptEditor] Movement error:", error);
+      setEnhanceError(error instanceof Error ? error.message : "Failed to apply movement");
+    } finally {
+      setIsApplyingMovement(false);
+    }
+  }, [prompt, enhancedPrompt]);
+
   const handleDelete = useCallback(() => {
     if (onDelete) {
       onDelete(chunk);
@@ -102,6 +135,8 @@ export function PromptEditor({
       handleSave();
     }
   }, [handleSave]);
+
+  const isBusy = isEnhancing || isApplyingMovement;
 
   return (
     <AlertDialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
@@ -139,7 +174,7 @@ export function PromptEditor({
                 variant="secondary"
                 size="sm"
                 onClick={handleEnhance}
-                disabled={!prompt.trim() || isEnhancing}
+                disabled={!prompt.trim() || isBusy}
                 className="gap-1.5"
               >
                 {isEnhancing ? (
@@ -152,6 +187,30 @@ export function PromptEditor({
               {enhanceError && (
                 <span className="text-xs text-destructive">{enhanceError}</span>
               )}
+            </div>
+
+            {/* Camera movements */}
+            <div className="mt-3">
+              <Label className="text-xs font-medium flex items-center gap-1.5 text-muted-foreground">
+                <Video className="h-3 w-3" />
+                Add Movement
+              </Label>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {MOVEMENTS.map((movement) => (
+                  <Button
+                    key={movement.name}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    title={movement.description}
+                    disabled={isBusy || (!prompt.trim() && !enhancedPrompt.trim())}
+                    onClick={() => handleAddMovement(movement.instruction)}
+                    className="text-xs h-7 px-2.5"
+                  >
+                    {movement.name}
+                  </Button>
+                ))}
+              </div>
             </div>
           </div>
 
