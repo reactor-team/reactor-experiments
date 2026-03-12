@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef, type ReactNode } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useReactor, useReactorMessage } from "@reactor-team/js-sdk";
 import { MAX_CHUNKS, FRAMES_PER_CHUNK, FPS } from "@/lib/constants";
 import type { HeliosMessage } from "@/lib/types";
@@ -60,6 +60,14 @@ export function FilmDirector({
       setIsPaused(state.paused);
       setIsRunning(state.running);
       setScheduledPrompts(prev => ({ ...prev, ...state.scheduled_prompts }));
+
+      // Auto-pause when the timeline ends
+      if (state.running && !state.paused && state.current_chunk >= maxChunks) {
+        setIsFinished(true);
+        sendCommand("pause", {}).catch((err) =>
+          console.error("[FilmDirector] Failed to auto-pause:", err)
+        );
+      }
     } else if (message?.type === "event") {
       const event = message.data;
       console.log("[FilmDirector] Event:", event.event, event);
@@ -78,16 +86,6 @@ export function FilmDirector({
       }
     }
   });
-
-  // Auto-pause when the timeline ends
-  useEffect(() => {
-    if (isRunning && !isPaused && currentChunk >= maxChunks) {
-      setIsFinished(true);
-      sendCommand("pause", {}).catch((err) =>
-        console.error("[FilmDirector] Failed to auto-pause:", err)
-      );
-    }
-  }, [currentChunk, maxChunks, isRunning, isPaused, sendCommand]);
 
   // Load shared timeline from URL fragment on mount
   useEffect(() => {
