@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef } from "react";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -21,14 +21,15 @@ interface ShareDialogProps {
 
 export function ShareDialog({ open, shareUrl, onClose }: ShareDialogProps) {
   const [copied, setCopied] = useState(false);
+  const [prevOpen, setPrevOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (open) {
-      setCopied(false);
-      setTimeout(() => inputRef.current?.select(), 50);
-    }
-  }, [open]);
+  if (open && !prevOpen) {
+    setCopied(false);
+  }
+  if (open !== prevOpen) {
+    setPrevOpen(open);
+  }
 
   const handleCopy = useCallback(async () => {
     try {
