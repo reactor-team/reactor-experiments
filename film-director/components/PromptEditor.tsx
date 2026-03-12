@@ -14,22 +14,23 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Trash2, Sparkles, Loader2 } from "lucide-react";
+import { Trash2, Sparkles, Loader2, Video } from "lucide-react";
+import { MOVEMENTS } from "@/lib/movements";
 
 interface PromptEditorProps {
   open: boolean;
-  frame: number;
+  chunk: number;
   initialPrompt?: string;
   isEditing: boolean;
-  previousPrompts?: { frame: number; prompt: string }[];
-  onSave: (frame: number, prompt: string) => void;
-  onDelete?: (frame: number) => void;
+  previousPrompts?: { chunk: number; prompt: string }[];
+  onSave: (chunk: number, prompt: string) => void;
+  onDelete?: (chunk: number) => void;
   onClose: () => void;
 }
 
 export function PromptEditor({
   open,
-  frame,
+  chunk,
   initialPrompt = "",
   isEditing,
   previousPrompts = [],
@@ -42,23 +43,22 @@ export function PromptEditor({
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [enhanceError, setEnhanceError] = useState<string | null>(null);
 
-  // Reset state when dialog opens with new data
   useEffect(() => {
     if (open) {
       setPrompt(initialPrompt);
       setEnhancedPrompt("");
       setEnhanceError(null);
+      setIsApplyingMovement(false);
     }
   }, [open, initialPrompt]);
 
   const handleSave = useCallback(() => {
-    // Use enhanced prompt if filled, otherwise use original
     const finalPrompt = enhancedPrompt.trim() || prompt.trim();
     if (finalPrompt) {
-      onSave(frame, finalPrompt);
+      onSave(chunk, finalPrompt);
       onClose();
     }
-  }, [frame, prompt, enhancedPrompt, onSave, onClose]);
+  }, [chunk, prompt, enhancedPrompt, onSave, onClose]);
 
   const handleEnhance = useCallback(async () => {
     if (!prompt.trim()) return;
@@ -72,7 +72,7 @@ export function PromptEditor({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           prompt: prompt.trim(),
-          previousPrompts: previousPrompts.filter(p => p.frame < frame),
+          previousPrompts: previousPrompts.filter(p => p.chunk < chunk),
         }),
       });
       
@@ -89,14 +89,45 @@ export function PromptEditor({
     } finally {
       setIsEnhancing(false);
     }
-  }, [prompt, previousPrompts, frame]);
+  }, [prompt, previousPrompts, chunk]);
+
+  const [isApplyingMovement, setIsApplyingMovement] = useState(false);
+
+  const handleAddMovement = useCallback(async (instruction: string) => {
+    const basePrompt = enhancedPrompt.trim() || prompt.trim();
+    if (!basePrompt) return;
+
+    setIsApplyingMovement(true);
+    setEnhanceError(null);
+
+    try {
+      const response = await fetch("/api/apply-movement", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: basePrompt, instruction }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to apply movement");
+      }
+
+      setEnhancedPrompt(data.enhancedPrompt);
+    } catch (error) {
+      console.error("[PromptEditor] Movement error:", error);
+      setEnhanceError(error instanceof Error ? error.message : "Failed to apply movement");
+    } finally {
+      setIsApplyingMovement(false);
+    }
+  }, [prompt, enhancedPrompt]);
 
   const handleDelete = useCallback(() => {
     if (onDelete) {
-      onDelete(frame);
+      onDelete(chunk);
       onClose();
     }
-  }, [frame, onDelete, onClose]);
+  }, [chunk, onDelete, onClose]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === "Enter" && e.metaKey) {
@@ -105,23 +136,24 @@ export function PromptEditor({
     }
   }, [handleSave]);
 
+  const isBusy = isEnhancing || isApplyingMovement;
+
   return (
     <AlertDialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <AlertDialogContent className="max-w-lg">
+      <AlertDialogContent className="max-w-lg max-h-[85vh] grid-rows-[auto_1fr_auto]">
         <AlertDialogHeader>
           <AlertDialogTitle>
             {isEditing ? "Edit Prompt" : "Add Prompt"}
           </AlertDialogTitle>
           <AlertDialogDescription>
             {isEditing 
-              ? `Editing prompt at frame ${frame}`
-              : `Add a new prompt starting at frame ${frame}`
+              ? `Editing prompt at chunk ${chunk}`
+              : `Add a new prompt starting at chunk ${chunk}`
             }
           </AlertDialogDescription>
         </AlertDialogHeader>
 
-        <div className="py-4 space-y-4">
-          {/* Original prompt input */}
+        <div className="py-4 space-y-4 overflow-y-auto min-h-0">
           <div>
             <Label htmlFor="prompt" className="text-sm font-medium">
               Prompt
@@ -132,18 +164,17 @@ export function PromptEditor({
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Describe what should happen in the video..."
-              className="mt-2 min-h-[80px] resize-none"
+              className="mt-2 min-h-[80px] max-h-[150px] overflow-y-auto resize-none"
               autoFocus
             />
             
-            {/* Enhance button */}
             <div className="mt-2 flex items-center gap-2">
               <Button
                 type="button"
                 variant="secondary"
                 size="sm"
                 onClick={handleEnhance}
-                disabled={!prompt.trim() || isEnhancing}
+                disabled={!prompt.trim() || isBusy}
                 className="gap-1.5"
               >
                 {isEnhancing ? (
@@ -157,9 +188,32 @@ export function PromptEditor({
                 <span className="text-xs text-destructive">{enhanceError}</span>
               )}
             </div>
+
+            {/* Camera movements */}
+            <div className="mt-3">
+              <Label className="text-xs font-medium flex items-center gap-1.5 text-muted-foreground">
+                <Video className="h-3 w-3" />
+                Add Movement
+              </Label>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {MOVEMENTS.map((movement) => (
+                  <Button
+                    key={movement.name}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    title={movement.description}
+                    disabled={isBusy || (!prompt.trim() && !enhancedPrompt.trim())}
+                    onClick={() => handleAddMovement(movement.instruction)}
+                    className="text-xs h-7 px-2.5"
+                  >
+                    {movement.name}
+                  </Button>
+                ))}
+              </div>
+            </div>
           </div>
 
-          {/* Enhanced prompt field - always visible */}
           <div>
             <Label htmlFor="enhanced-prompt" className="text-sm font-medium flex items-center gap-1.5">
               <Sparkles className="h-3.5 w-3.5 text-primary" />
@@ -172,7 +226,7 @@ export function PromptEditor({
               onChange={(e) => setEnhancedPrompt(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Click 'Enhance Prompt' to generate an enhanced version, or leave empty to use the original..."
-              className="mt-2 min-h-[80px] resize-none"
+              className="mt-2 min-h-[80px] max-h-[150px] overflow-y-auto resize-none"
             />
             <p className="text-xs text-muted-foreground mt-1">
               {enhancedPrompt.trim() 
@@ -188,7 +242,7 @@ export function PromptEditor({
 
         <AlertDialogFooter className="flex-row justify-between sm:justify-between">
           <div>
-            {isEditing && onDelete && frame !== 0 && (
+            {isEditing && onDelete && chunk !== 0 && (
               <Button
                 variant="destructive"
                 size="sm"

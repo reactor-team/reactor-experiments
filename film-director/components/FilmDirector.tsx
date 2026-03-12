@@ -2,99 +2,137 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useReactor, useReactorMessage } from "@reactor-team/js-sdk";
-import { MAX_FRAMES } from "@/lib/constants";
-import type { LongLiveMessage } from "@/lib/types";
+import { MAX_CHUNKS, FRAMES_PER_CHUNK, FPS } from "@/lib/constants";
+import type { HeliosMessage } from "@/lib/types";
 import { VideoPreview } from "./VideoPreview";
 import { Timeline } from "./Timeline";
 import { TransportControls } from "./TransportControls";
 import { FrameDisplay } from "./FrameDisplay";
 import { ResizableDivider } from "./ResizableDivider";
 import { cn } from "@/lib/utils";
+import { encodeTimeline, decodeTimeline } from "@/lib/share";
+import { ShareDialog } from "./ShareDialog";
+import { Share2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface FilmDirectorProps {
-  maxFrames?: number;
+  maxChunks?: number;
   className?: string;
 }
 
 export function FilmDirector({ 
-  maxFrames = MAX_FRAMES,
+  maxChunks = MAX_CHUNKS,
   className 
 }: FilmDirectorProps) {
-  // Model state
   const [currentFrame, setCurrentFrame] = useState(0);
+  const [currentChunk, setCurrentChunk] = useState(0);
   const [currentPrompt, setCurrentPrompt] = useState<string | null>(null);
   const [isPaused, setIsPaused] = useState(true);
+  const [isRunning, setIsRunning] = useState(false);
   const [scheduledPrompts, setScheduledPrompts] = useState<Record<number, string>>({});
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [isFinished, setIsFinished] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareUrl, setShareUrl] = useState("");
+  const [toasts, setToasts] = useState<{ id: number; message: string }[]>([]);
+  const toastIdRef = useRef(0);
 
-  // Get reactor methods and status
+  const addToast = useCallback((message: string) => {
+    const id = ++toastIdRef.current;
+    setToasts(prev => [...prev, { id, message }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 5000);
+  }, []);
+
   const { sendCommand, status } = useReactor((state) => ({
     sendCommand: state.sendCommand,
     status: state.status,
   }));
 
-  // The SDK uses "ready" as the connected status
   const isConnected = status === "ready";
 
-  // Listen for messages from the model
-  useReactorMessage((message: LongLiveMessage) => {
+  useReactorMessage((message: HeliosMessage) => {
     if (message?.type === "state") {
       const state = message.data;
       setCurrentFrame(state.current_frame);
+      setCurrentChunk(state.current_chunk);
       setCurrentPrompt(state.current_prompt);
       setIsPaused(state.paused);
-      setScheduledPrompts(state.scheduled_prompts);
-      
-      // Infer isPlaying directly from frame position
-      // Frame 0 = not started/reset, Frame > 0 = generation in progress
-      setIsPlaying(state.current_frame > 0);
+      setIsRunning(state.running);
+      setScheduledPrompts(prev => ({ ...prev, ...state.scheduled_prompts }));
+
+      // Auto-pause when the timeline ends
+      if (state.running && !state.paused && state.current_chunk >= maxChunks) {
+        setIsFinished(true);
+        sendCommand("pause", {}).catch((err) =>
+          console.error("[FilmDirector] Failed to auto-pause:", err)
+        );
+      }
     } else if (message?.type === "event") {
       const event = message.data;
       console.log("[FilmDirector] Event:", event.event, event);
       
       if (event.event === "generation_started") {
-        setIsPlaying(true);
+        setIsRunning(true);
       } else if (event.event === "generation_reset") {
-        setIsPlaying(false);
+        setIsRunning(false);
+        setIsFinished(false);
         setCurrentFrame(0);
+        setCurrentChunk(0);
         setCurrentPrompt(null);
-        setScheduledPrompts({});
       } else if (event.event === "error") {
         console.error("[FilmDirector] Error:", event.message);
+        addToast(event.message || "An unknown error occurred");
       }
     }
   });
 
-  // Reset state when disconnected - use ref to track previous status
-  // to avoid cascading renders from synchronous setState in effect
+  // Load shared timeline from URL fragment on mount
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (!hash.startsWith("#s=")) return;
+    const encoded = hash.slice(3);
+    decodeTimeline(encoded)
+      .then((prompts) => {
+        if (Object.keys(prompts).length > 0) {
+          setScheduledPrompts(prompts);
+        }
+      })
+      .catch((err) => console.error("[FilmDirector] Failed to load shared timeline:", err));
+  }, []);
+
   const prevStatusRef = useRef(status);
   useEffect(() => {
     const wasConnected = prevStatusRef.current !== "disconnected";
     const isNowDisconnected = status === "disconnected";
     prevStatusRef.current = status;
     
-    // Only reset if we transitioned from connected to disconnected
     if (wasConnected && isNowDisconnected) {
-      // Use a microtask to avoid synchronous setState in effect body
       queueMicrotask(() => {
         setCurrentFrame(0);
+        setCurrentChunk(0);
         setCurrentPrompt(null);
         setIsPaused(true);
+        setIsRunning(false);
+        setIsFinished(false);
         setScheduledPrompts({});
-        setIsPlaying(false);
       });
     }
   }, [status]);
 
-  // Transport controls handlers
   const handlePlay = useCallback(async () => {
-    // Check if we have a prompt at frame 0
     if (!(0 in scheduledPrompts)) {
-      console.warn("[FilmDirector] Cannot start: No prompt at frame 0");
+      console.warn("[FilmDirector] Cannot start: No prompt at chunk 0");
       return;
     }
     
     try {
+      for (const [chunk, prompt] of Object.entries(scheduledPrompts)) {
+        await sendCommand("schedule_prompt", {
+          prompt,
+          chunk: Number(chunk),
+        });
+      }
       await sendCommand("start", {});
     } catch (error) {
       console.error("[FilmDirector] Failed to start:", error);
@@ -117,66 +155,79 @@ export function FilmDirector({
     }
   }, [sendCommand]);
 
-  const handleStop = useCallback(async () => {
+  const handleRestart = useCallback(async () => {
     try {
       await sendCommand("reset", {});
+    } catch (error) {
+      console.error("[FilmDirector] Failed to restart:", error);
+    }
+  }, [sendCommand]);
+
+  const handleReset = useCallback(async () => {
+    try {
+      await sendCommand("reset", {});
+      setScheduledPrompts({});
     } catch (error) {
       console.error("[FilmDirector] Failed to reset:", error);
     }
   }, [sendCommand]);
 
-  // Prompt management handlers
-  const handleAddPrompt = useCallback(async (frame: number, prompt: string) => {
+  const handleAddPrompt = useCallback(async (chunk: number, prompt: string) => {
     try {
       await sendCommand("schedule_prompt", {
-        new_prompt: prompt,
-        timestamp: frame,
+        prompt,
+        chunk,
       });
       
-      // Optimistically update local state
       setScheduledPrompts(prev => ({
         ...prev,
-        [frame]: prompt,
+        [chunk]: prompt,
       }));
     } catch (error) {
       console.error("[FilmDirector] Failed to add prompt:", error);
     }
   }, [sendCommand]);
 
-  const handleEditPrompt = useCallback(async (frame: number, prompt: string) => {
-    // For editing, we just schedule the new prompt at the same frame
-    // The model will overwrite the existing one
+  const handleEditPrompt = useCallback(async (chunk: number, prompt: string) => {
     try {
       await sendCommand("schedule_prompt", {
-        new_prompt: prompt,
-        timestamp: frame,
+        prompt,
+        chunk,
       });
       
-      // Optimistically update local state
       setScheduledPrompts(prev => ({
         ...prev,
-        [frame]: prompt,
+        [chunk]: prompt,
       }));
     } catch (error) {
       console.error("[FilmDirector] Failed to edit prompt:", error);
     }
   }, [sendCommand]);
 
-  const handleDeletePrompt = useCallback((frame: number) => {
-    // Note: The model doesn't support deleting prompts directly
-    // We just remove it from local state - it will be gone on next reset
+  const handleDeletePrompt = useCallback((chunk: number) => {
     setScheduledPrompts(prev => {
       const next = { ...prev };
-      delete next[frame];
+      delete next[chunk];
       return next;
     });
     console.warn("[FilmDirector] Prompt deleted locally. Reset to sync with model.");
   }, []);
 
-  // Can we start playback?
-  const canStart = 0 in scheduledPrompts;
+  const handleShare = useCallback(async () => {
+    if (Object.keys(scheduledPrompts).length === 0) return;
+    try {
+      const encoded = await encodeTimeline(scheduledPrompts);
+      const url = `${window.location.origin}${window.location.pathname}#s=${encoded}`;
+      setShareUrl(url);
+      setShareOpen(true);
+    } catch (error) {
+      console.error("[FilmDirector] Failed to generate share link:", error);
+    }
+  }, [scheduledPrompts]);
 
-  // Resizable panel state - timeline height in pixels
+  const canStart = 0 in scheduledPrompts;
+  const hasPrompts = Object.keys(scheduledPrompts).length > 0;
+
   const containerRef = useRef<HTMLDivElement>(null);
   const [timelineHeight, setTimelineHeight] = useState(200);
   const minTimelineHeight = 120;
@@ -189,18 +240,26 @@ export function FilmDirector({
     });
   }, []);
 
+  const totalSeconds = (currentChunk * FRAMES_PER_CHUNK) / FPS;
+
+  const dismissToast = useCallback((id: number) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  }, []);
+
   return (
-    <div ref={containerRef} className={cn("flex flex-col h-full bg-background", className)}>
-      {/* Video preview area - takes remaining space */}
+    <div ref={containerRef} className={cn("relative flex flex-col h-full bg-background", className)}>
+      {/* Video preview area */}
       <div className="flex-1 min-h-0 p-2 pb-1">
         <VideoPreview
           currentFrame={currentFrame}
+          currentChunk={currentChunk}
+          isRunning={isRunning}
           isPaused={isPaused}
           className="w-full h-full"
         />
       </div>
 
-      {/* Current prompt display - single line, truncated */}
+      {/* Current prompt display */}
       <div className="px-4 pb-1">
         <div className="bg-card border border-border rounded px-3 py-1.5 flex items-center gap-2 min-w-0">
           <span className="text-[10px] text-muted-foreground uppercase tracking-wide shrink-0">
@@ -209,14 +268,13 @@ export function FilmDirector({
           <p className="text-xs text-foreground truncate min-w-0 flex-1">
             {currentPrompt || (
               <span className="text-muted-foreground italic">
-                No prompt — click the timeline to add one at frame 0
+                No prompt — click the timeline to add one at chunk 0
               </span>
             )}
           </p>
         </div>
       </div>
 
-      {/* Resizable divider */}
       <ResizableDivider onResize={handleResize} />
 
       {/* Bottom panel with controls and timeline */}
@@ -227,30 +285,47 @@ export function FilmDirector({
         {/* Control bar */}
         <div className="flex items-center gap-4 px-4 py-2 bg-card border-b border-border shrink-0">
           <TransportControls
-            isPlaying={isPlaying}
+            isPlaying={isRunning}
             isPaused={isPaused}
+            isFinished={isFinished}
             canStart={canStart}
             isConnected={isConnected}
             onPlay={handlePlay}
             onPause={handlePause}
             onResume={handleResume}
-            onStop={handleStop}
+            onRestart={handleRestart}
+            onReset={handleReset}
           />
           
           <div className="h-6 w-px bg-border" />
           
-          <FrameDisplay currentFrame={currentFrame} maxFrames={maxFrames} />
+          <FrameDisplay
+            currentChunk={currentChunk}
+            currentFrame={currentFrame}
+            maxChunks={maxChunks}
+          />
           
           <div className="flex-1" />
+
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleShare}
+            disabled={!hasPrompts}
+            className="gap-1.5 text-foreground"
+          >
+            <Share2 className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Share</span>
+          </Button>
         </div>
 
-        {/* Timeline - takes remaining space in panel */}
+        {/* Timeline */}
         <div className="flex-1 min-h-0 overflow-hidden">
           <Timeline
-            currentFrame={currentFrame}
+            currentChunk={currentChunk}
             currentPrompt={currentPrompt}
             scheduledPrompts={scheduledPrompts}
-            maxFrames={maxFrames}
+            maxChunks={maxChunks}
             onAddPrompt={handleAddPrompt}
             onEditPrompt={handleEditPrompt}
             onDeletePrompt={handleDeletePrompt}
@@ -259,6 +334,29 @@ export function FilmDirector({
           />
         </div>
       </div>
+
+      <ShareDialog open={shareOpen} shareUrl={shareUrl} onClose={() => setShareOpen(false)} />
+
+      {/* Error toasts */}
+      {toasts.length > 0 && (
+        <div className="absolute bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm">
+          {toasts.map(toast => (
+            <div
+              key={toast.id}
+              className="bg-destructive/90 text-destructive-foreground rounded-lg px-4 py-3 shadow-lg backdrop-blur-sm flex items-start gap-3 animate-in slide-in-from-right fade-in duration-200"
+              role="alert"
+            >
+              <p className="text-sm flex-1">{toast.message}</p>
+              <button
+                onClick={() => dismissToast(toast.id)}
+                className="text-destructive-foreground/70 hover:text-destructive-foreground shrink-0 text-lg leading-none"
+              >
+                &times;
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -6,41 +6,46 @@ import { FPS } from "@/lib/constants";
 
 interface VideoPreviewProps {
   currentFrame: number;
+  currentChunk: number;
+  isRunning: boolean;
   isPaused: boolean;
   className?: string;
 }
 
 export function VideoPreview({ 
-  currentFrame, 
+  currentFrame,
+  currentChunk,
+  isRunning,
   isPaused,
   className 
 }: VideoPreviewProps) {
-  // Calculate timecode
-  const seconds = Math.floor(currentFrame / FPS);
-  const frames = currentFrame % FPS;
-  const timecode = `${seconds.toString().padStart(2, "0")}:${frames.toString().padStart(2, "0")}`;
+  const totalSeconds = Math.floor(currentFrame / FPS);
+  const minutes = Math.floor(totalSeconds / 60);
+  const secs = totalSeconds % 60;
+  const timecode = `${minutes}:${secs.toString().padStart(2, "0")}`;
 
   return (
     <div className={cn("relative bg-black rounded-lg overflow-hidden", className)}>
-      {/* Video view */}
       <ReactorView className="w-full h-full object-contain" />
       
-      {/* Overlay - timecode and status */}
       <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4">
         <div className="flex items-center justify-between">
-          {/* Timecode */}
           <div className="flex items-center gap-3">
             <span className="font-mono text-white text-lg tabular-nums">
               {timecode}
             </span>
             <span className="text-white/60 text-sm">
-              Frame {currentFrame}
+              Chunk {currentChunk}
             </span>
           </div>
           
-          {/* Status indicator */}
           <div className="flex items-center gap-2">
-            {isPaused ? (
+            {!isRunning ? (
+              <span className="text-white/40 text-sm flex items-center gap-1.5">
+                <span className="w-2 h-2 bg-white/40 rounded-full" />
+                Ready
+              </span>
+            ) : isPaused ? (
               <span className="text-yellow-400 text-sm flex items-center gap-1.5">
                 <span className="w-2 h-2 bg-yellow-400 rounded-full" />
                 Paused

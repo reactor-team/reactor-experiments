@@ -1,41 +1,46 @@
 "use client";
 
 import { memo } from "react";
-import { MAX_FRAMES, FPS } from "@/lib/constants";
+import { MAX_CHUNKS, FRAMES_PER_CHUNK, FPS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 interface FrameDisplayProps {
+  currentChunk: number;
   currentFrame: number;
-  maxFrames?: number;
+  maxChunks?: number;
   className?: string;
 }
 
 function FrameDisplayComponent({ 
-  currentFrame, 
-  maxFrames = MAX_FRAMES,
+  currentChunk,
+  currentFrame,
+  maxChunks = MAX_CHUNKS,
   className 
 }: FrameDisplayProps) {
-  const seconds = Math.floor(currentFrame / FPS);
-  const frames = currentFrame % FPS;
-  const totalSeconds = Math.floor(maxFrames / FPS);
+  const elapsedTotal = Math.floor(currentFrame / FPS);
+  const elapsedMin = Math.floor(elapsedTotal / 60);
+  const elapsedSec = elapsedTotal % 60;
+  const maxTotal = Math.floor((maxChunks * FRAMES_PER_CHUNK) / FPS);
+  const maxMin = Math.floor(maxTotal / 60);
+  const maxSec = maxTotal % 60;
 
   return (
     <div className={cn("flex items-center gap-4 font-mono text-sm text-foreground", className)}>
       {/* Timecode */}
       <div className="flex items-baseline gap-1">
         <span className="tabular-nums font-medium">
-          {seconds.toString().padStart(2, "0")}:{frames.toString().padStart(2, "0")}
+          {elapsedMin}:{elapsedSec.toString().padStart(2, "0")}
         </span>
         <span className="text-muted-foreground text-xs">
-          / {totalSeconds}s
+          / {maxMin}:{maxSec.toString().padStart(2, "0")}
         </span>
       </div>
       
-      {/* Frame counter */}
+      {/* Chunk counter */}
       <div className="flex items-baseline gap-1">
-        <span className="text-muted-foreground text-xs">Frame</span>
-        <span className="tabular-nums font-medium">{currentFrame}</span>
-        <span className="text-muted-foreground text-xs">/ {maxFrames}</span>
+        <span className="text-muted-foreground text-xs">Chunk</span>
+        <span className="tabular-nums font-medium">{currentChunk}</span>
+        <span className="text-muted-foreground text-xs">/ {maxChunks}</span>
       </div>
     </div>
   );
