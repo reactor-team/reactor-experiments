@@ -1,14 +1,16 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useReactor, useReactorMessage } from "@reactor-team/js-sdk";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { HeliosPromptSuggestions } from "./PromptSuggestions";
+import { PromptSuggestions } from "./PromptSuggestions";
 import { cn } from "@/lib/utils";
+import type { StoryPrompt } from "@/lib/prompts";
 
 interface HeliosControllerProps {
   className?: string;
+  anthropicApiKey?: string;
 }
 
 // Types for the Helios model message protocol
@@ -38,12 +40,20 @@ interface EventMessage {
 
 type HeliosMessage = StateMessage | EventMessage;
 
-export function HeliosController({ className }: HeliosControllerProps) {
+export function HeliosController({
+  className,
+  anthropicApiKey,
+}: HeliosControllerProps) {
   const [prompt, setPrompt] = useState("");
   const [currentFrame, setCurrentFrame] = useState(0);
   const [currentChunk, setCurrentChunk] = useState(0);
   const [currentPrompt, setCurrentPrompt] = useState<string | null>(null);
-  const [resetKey, setResetKey] = useState(0);
+  const [selectedStoryId, setSelectedStoryId] = useState<string | null>(null);
+  const [currentStep, setCurrentStep] = useState(0);
+  const [isUpsampling, setIsUpsampling] = useState(false);
+  const [previousPrompt, setPreviousPrompt] = useState<string | null>(null);
+  const currentChunkRef = useRef(0);
+  const currentFrameRef = useRef(0);
 
   const { sendCommand, status } = useReactor((state) => ({
     sendCommand: state.sendCommand,
@@ -56,14 +66,9 @@ export function HeliosController({ className }: HeliosControllerProps) {
       const state = message.data;
       setCurrentFrame(state.current_frame);
       setCurrentChunk(state.current_chunk);
+      currentChunkRef.current = state.current_chunk;
+      currentFrameRef.current = state.current_frame;
       setCurrentPrompt(state.current_prompt);
-    } else if (message?.type === "event") {
-      const event = message.data;
-      console.log("Helios event:", event.event, event);
-
-      if (event.event === "error") {
-        console.error("Helios error:", event.message);
-      }
     }
   });
 
@@ -72,6 +77,9 @@ export function HeliosController({ className }: HeliosControllerProps) {
     setCurrentFrame(0);
     setCurrentChunk(0);
     setCurrentPrompt(null);
+    setSelectedStoryId(null);
+    setCurrentStep(0);
+    setPreviousPrompt(null);
   };
 
   // Reset when disconnected
@@ -81,35 +89,87 @@ export function HeliosController({ className }: HeliosControllerProps) {
     }
   }, [status]);
 
+  // Submit a prompt — first prompt uses set_prompt + start,
+  // follow-up prompts use schedule_prompt at currentChunk + 2
   const handleSubmitPrompt = async (promptText: string) => {
     if (!promptText.trim()) return;
 
-    // If already generating, reset first and wait for the model to be ready
-    if (currentFrame > 0) {
-      await sendCommand("reset", {});
-      resetUIState();
-      await new Promise((r) => setTimeout(r, 2400));
+    if (currentFrameRef.current === 0) {
+      // First prompt: set_prompt then start
+      await sendCommand("set_prompt", { prompt: promptText.trim() });
+      await sendCommand("start", {});
+    } else {
+      // Follow-up prompt: schedule at current chunk + 2
+      const chunk = currentChunkRef.current + 2;
+      await sendCommand("schedule_prompt", {
+        prompt: promptText.trim(),
+        chunk,
+      });
     }
 
-    await sendCommand("set_prompt", { prompt: promptText.trim() });
-    await sendCommand("start", {});
+    setPreviousPrompt(promptText.trim());
+  };
+
+  // Upsample a prompt using the Anthropic API (only if key is provided)
+  const upsamplePrompt = async (text: string): Promise<string> => {
+    if (!anthropicApiKey) return text;
+
+    try {
+      setIsUpsampling(true);
+      const body: {
+        prompt: string;
+        previousPrompt?: string;
+        anthropicApiKey: string;
+      } = {
+        prompt: text,
+        anthropicApiKey,
+      };
+      if (previousPrompt) {
+        body.previousPrompt = previousPrompt;
+      }
+      const res = await fetch("/api/upsample", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) return text;
+      const data = await res.json();
+      if (data.upsampledPrompt) return data.upsampledPrompt;
+    } catch (err) {
+      console.error("Upsample failed, using original prompt:", err);
+    } finally {
+      setIsUpsampling(false);
+    }
+    return text;
+  };
+
+  // Story preset selection — no upsampling needed
+  const handlePromptSelect = async (
+    storyId: string,
+    storyPrompt: StoryPrompt,
+    step: number,
+  ) => {
+    setSelectedStoryId(storyId);
+    setCurrentStep(step);
+    await handleSubmitPrompt(storyPrompt.prompt);
   };
 
   const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!prompt.trim()) return;
 
-    await handleSubmitPrompt(prompt.trim());
+    const finalPrompt = await upsamplePrompt(prompt.trim());
+    await handleSubmitPrompt(finalPrompt);
     setPrompt("");
   };
 
   const handleReset = useCallback(async () => {
     await sendCommand("reset", {});
     resetUIState();
-    setResetKey((k) => k + 1);
   }, [sendCommand]);
 
   const isReady = status === "ready";
+  const hasEnhancement = !!anthropicApiKey;
 
   return (
     <div
@@ -155,11 +215,12 @@ export function HeliosController({ className }: HeliosControllerProps) {
         </div>
       )}
 
-      {/* Prompt Suggestions */}
-      <HeliosPromptSuggestions
-        onPromptSelect={handleSubmitPrompt}
+      {/* Story Suggestions */}
+      <PromptSuggestions
+        selectedStoryId={selectedStoryId}
+        currentStep={currentStep}
+        onPromptSelect={handlePromptSelect}
         disabled={!isReady}
-        resetKey={resetKey}
       />
 
       {/* Manual Input */}
@@ -169,18 +230,25 @@ export function HeliosController({ className }: HeliosControllerProps) {
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           placeholder="Or write your own prompt..."
-          disabled={!isReady}
+          disabled={!isReady || isUpsampling}
           className="flex-1 h-8 text-sm"
         />
         <Button
           type="submit"
           size="sm"
           variant="default"
-          disabled={!prompt.trim() || !isReady}
+          disabled={!prompt.trim() || !isReady || isUpsampling}
         >
-          Send
+          {isUpsampling ? "Enhancing..." : "Send"}
         </Button>
       </form>
+
+      {/* Enhancement notice */}
+      {hasEnhancement && (
+        <p className="text-[11px] text-muted-foreground leading-relaxed">
+          Custom prompts will be automatically enhanced for best results.
+        </p>
+      )}
     </div>
   );
 }

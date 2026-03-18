@@ -3,8 +3,8 @@ import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Helios - Real-Time Video Generation",
-  description: "A real-time video generation demo powered by Reactor",
+  title: "Helios Interactive - Story-Driven Video Generation",
+  description: "An interactive story-driven video generation demo powered by Reactor",
 };
 
 export default function RootLayout({

@@ -41,6 +41,7 @@ function ResetButton() {
 export default function Home() {
   const [jwtToken, setJwtToken] = useState<string | undefined>(undefined);
   const [isLocalMode, setIsLocalMode] = useState(false);
+  const [anthropicApiKey, setAnthropicApiKey] = useState("");
 
   // Ensure dark mode is applied to html element
   useEffect(() => {
@@ -81,8 +82,25 @@ export default function Home() {
               </div>
             </div>
 
+            {/* Prompt enhancement (optional) */}
+            <div className="flex items-center gap-2 shrink-0">
+              <label className="text-xs font-medium text-foreground whitespace-nowrap uppercase">
+                Anthropic Key
+              </label>
+              <input
+                type="password"
+                value={anthropicApiKey}
+                onChange={(e) => setAnthropicApiKey(e.target.value)}
+                placeholder="Optional: enables prompt enhancement for better results"
+                className="flex-1 h-8 rounded-md border border-border bg-card px-3 text-sm text-foreground placeholder:text-muted-foreground"
+              />
+            </div>
+
             {/* Controls panel - stays at bottom */}
-            <HeliosController className="shrink-0" />
+            <HeliosController
+              className="shrink-0"
+              anthropicApiKey={anthropicApiKey || undefined}
+            />
           </div>
         </main>
       </ReactorProvider>
