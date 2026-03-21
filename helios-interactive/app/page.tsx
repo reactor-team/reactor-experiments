@@ -41,6 +41,7 @@ function ResetButton() {
 export default function Home() {
   const [jwtToken, setJwtToken] = useState<string | undefined>(undefined);
   const [isLocalMode, setIsLocalMode] = useState(false);
+  const [localUrl, setLocalUrl] = useState("http://localhost:8080");
   const [anthropicApiKey, setAnthropicApiKey] = useState("");
 
   // Ensure dark mode is applied to html element
@@ -51,7 +52,9 @@ export default function Home() {
   return (
     <div className="h-screen flex flex-col bg-background text-foreground overflow-hidden">
       <ReactorProvider
+        key={isLocalMode ? "local" : "remote"}
         modelName="helios"
+        apiUrl={isLocalMode ? localUrl : undefined}
         jwtToken={jwtToken}
         local={isLocalMode}
         connectOptions={{ autoConnect: false }}
@@ -66,6 +69,7 @@ export default function Home() {
             <ConnectionPanel
               onJwtTokenChange={setJwtToken}
               onLocalModeChange={setIsLocalMode}
+              onLocalUrlChange={setLocalUrl}
               className="shrink-0"
             />
 

@@ -8,6 +8,9 @@ import { PromptSuggestions } from "./PromptSuggestions";
 import { cn } from "@/lib/utils";
 import type { StoryPrompt } from "@/lib/prompts";
 
+type InputMode = "t2v" | "i2v" | "ref_video";
+type RefVideoStatus = "idle" | "uploading" | "ready" | "error";
+
 interface HeliosControllerProps {
   className?: string;
   anthropicApiKey?: string;
@@ -40,10 +43,61 @@ interface EventMessage {
 
 type HeliosMessage = StateMessage | EventMessage;
 
+const MAX_W = 640;
+const MAX_H = 360;
+const JPEG_QUALITY = 0.7;
+const REF_VIDEO_FPS = 24;
+
+const MODE_LABELS: Record<InputMode, string> = {
+  t2v: "T2V",
+  i2v: "I2V",
+  ref_video: "Reference Video",
+};
+
+/** Resize and compress an image file to JPEG via canvas (cover-fit). */
+function processImage(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = MAX_W;
+      canvas.height = MAX_H;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        reject(new Error("Failed to get canvas context"));
+        return;
+      }
+
+      const scale = Math.max(MAX_W / img.width, MAX_H / img.height);
+      const w = img.width * scale;
+      const h = img.height * scale;
+      const x = (MAX_W - w) / 2;
+      const y = (MAX_H - h) / 2;
+
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(img, x, y, w, h);
+
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL("image/jpeg", JPEG_QUALITY));
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Failed to load image"));
+    };
+
+    img.src = url;
+  });
+}
+
 export function HeliosController({
   className,
   anthropicApiKey,
 }: HeliosControllerProps) {
+  const [mode, setMode] = useState<InputMode>("t2v");
   const [prompt, setPrompt] = useState("");
   const [currentFrame, setCurrentFrame] = useState(0);
   const [currentChunk, setCurrentChunk] = useState(0);
@@ -54,6 +108,22 @@ export function HeliosController({
   const [previousPrompt, setPreviousPrompt] = useState<string | null>(null);
   const currentChunkRef = useRef(0);
   const currentFrameRef = useRef(0);
+
+  // I2V state
+  const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
+  const [imageSent, setImageSent] = useState(false);
+  const imageFileRef = useRef<HTMLInputElement | null>(null);
+
+  // Reference video state
+  const [refStatus, setRefStatus] = useState<RefVideoStatus>("idle");
+  const [refFileName, setRefFileName] = useState<string | null>(null);
+  const [refErrorMsg, setRefErrorMsg] = useState<string | null>(null);
+  const [refPreviewUrl, setRefPreviewUrl] = useState<string | null>(null);
+  const [refProgress, setRefProgress] = useState<{
+    sent: number;
+    total: number;
+  } | null>(null);
+  const refFileRef = useRef<HTMLInputElement | null>(null);
 
   const { sendCommand, status } = useReactor((state) => ({
     sendCommand: state.sendCommand,
@@ -80,6 +150,17 @@ export function HeliosController({
     setSelectedStoryId(null);
     setCurrentStep(0);
     setPreviousPrompt(null);
+    setImageDataUrl(null);
+    setImageSent(false);
+    setRefStatus("idle");
+    setRefFileName(null);
+    setRefErrorMsg(null);
+    setRefProgress(null);
+    if (refPreviewUrl) URL.revokeObjectURL(refPreviewUrl);
+    setRefPreviewUrl(null);
+    // Clear file inputs so re-selecting the same file triggers onChange
+    if (refFileRef.current) refFileRef.current.value = "";
+    if (imageFileRef.current) imageFileRef.current.value = "";
   };
 
   // Reset when disconnected
@@ -89,17 +170,18 @@ export function HeliosController({
     }
   }, [status]);
 
-  // Submit a prompt — first prompt uses set_prompt + start,
-  // follow-up prompts use schedule_prompt at currentChunk + 2
+  // Submit a prompt — in T2V mode the first prompt auto-starts,
+  // in I2V/V2V the user must manually click Start after setting conditioning.
+  // Follow-up prompts always use schedule_prompt.
   const handleSubmitPrompt = async (promptText: string) => {
     if (!promptText.trim()) return;
 
     if (currentFrameRef.current === 0) {
-      // First prompt: set_prompt then start
       await sendCommand("set_prompt", { prompt: promptText.trim() });
-      await sendCommand("start", {});
+      if (mode === "t2v") {
+        await sendCommand("start", {});
+      }
     } else {
-      // Follow-up prompt: schedule at current chunk + 2
       const chunk = currentChunkRef.current + 2;
       await sendCommand("schedule_prompt", {
         prompt: promptText.trim(),
@@ -110,7 +192,7 @@ export function HeliosController({
     setPreviousPrompt(promptText.trim());
   };
 
-  // Upsample a prompt using the Anthropic API (only if key is provided)
+  // Upsample a prompt using the Anthropic API
   const upsamplePrompt = async (text: string): Promise<string> => {
     if (!anthropicApiKey) return text;
 
@@ -143,7 +225,7 @@ export function HeliosController({
     return text;
   };
 
-  // Story preset selection — no upsampling needed
+  // Story preset selection
   const handlePromptSelect = async (
     storyId: string,
     storyPrompt: StoryPrompt,
@@ -163,6 +245,99 @@ export function HeliosController({
     setPrompt("");
   };
 
+  // --- I2V handlers ---
+  const handleImageFileChange = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      try {
+        const dataUrl = await processImage(file);
+        setImageDataUrl(dataUrl);
+        setImageSent(false);
+      } catch (err) {
+        console.error("[HeliosController] Failed to process image:", err);
+      }
+    },
+    [],
+  );
+
+  const handleImageSend = useCallback(() => {
+    if (!imageDataUrl || status !== "ready") return;
+    sendCommand("set_image", { image_b64: imageDataUrl });
+    setImageSent(true);
+    setTimeout(() => setImageSent(false), 1500);
+  }, [imageDataUrl, status, sendCommand]);
+
+  // --- Reference video handlers ---
+  const handleRefVideoChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      setRefFileName(file.name);
+      setRefErrorMsg(null);
+      setRefStatus("idle");
+      setRefProgress(null);
+
+      if (refPreviewUrl) URL.revokeObjectURL(refPreviewUrl);
+
+      const url = URL.createObjectURL(file);
+      setRefPreviewUrl(url);
+    },
+    [refPreviewUrl],
+  );
+
+  const handleRefVideoSend = useCallback(async () => {
+    if (!refPreviewUrl || status !== "ready") return;
+
+    setRefStatus("uploading");
+    setRefErrorMsg(null);
+
+    try {
+      const video = document.createElement("video");
+      video.src = refPreviewUrl;
+      video.muted = true;
+      video.playsInline = true;
+
+      await new Promise<void>((resolve, reject) => {
+        video.onloadedmetadata = () => resolve();
+        video.onerror = () => reject(new Error("Failed to load video"));
+      });
+
+      const canvas = document.createElement("canvas");
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext("2d")!;
+
+      const duration = video.duration;
+      const frameInterval = 1 / REF_VIDEO_FPS;
+      const totalFrames = Math.floor(duration * REF_VIDEO_FPS);
+
+      setRefProgress({ sent: 0, total: totalFrames });
+
+      sendCommand("clear_video", {});
+
+      for (let i = 0; i < totalFrames; i++) {
+        await new Promise<void>((resolve) => {
+          video.onseeked = () => resolve();
+          video.currentTime = i * frameInterval;
+        });
+
+        ctx.drawImage(video, 0, 0);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+        sendCommand("push_frame", { frame: dataUrl });
+        setRefProgress({ sent: i + 1, total: totalFrames });
+      }
+
+      sendCommand("finish_video", {});
+      setRefStatus("ready");
+    } catch (err) {
+      console.error("[HeliosController] ref video frame extraction failed:", err);
+      setRefStatus("error");
+      setRefErrorMsg(String(err));
+    }
+  }, [refPreviewUrl, status, sendCommand]);
+
   const handleReset = useCallback(async () => {
     await sendCommand("reset", {});
     resetUIState();
@@ -171,15 +346,23 @@ export function HeliosController({
   const isReady = status === "ready";
   const hasEnhancement = !!anthropicApiKey;
 
+  const tabCls = (m: InputMode) =>
+    cn(
+      "px-3 py-1 rounded text-xs font-medium uppercase transition-colors border",
+      mode === m
+        ? "bg-primary/15 text-primary border-primary/40"
+        : "bg-muted/50 text-muted-foreground border-border hover:bg-muted hover:text-foreground",
+    );
+
   return (
     <div
       className={cn(
-        "w-full p-3 bg-card rounded-lg border border-border space-y-2.5",
+        "w-full bg-card rounded-lg border border-border overflow-hidden",
         className,
       )}
     >
       {/* Header with Chunk Counter and Reset */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between p-3 border-b border-border">
         <div className="flex items-center gap-3 flex-wrap">
           <span className="text-xs font-medium text-foreground uppercase">
             Prompts
@@ -203,52 +386,256 @@ export function HeliosController({
 
       {/* Current Prompt Display */}
       {currentPrompt && (
-        <div className="bg-muted rounded px-2 py-1.5 border border-border">
-          <div className="flex gap-2">
-            <span className="text-[11px] text-muted-foreground flex-shrink-0">
-              Current:
-            </span>
-            <span className="text-[11px] text-foreground/70 line-clamp-1">
-              {currentPrompt}
-            </span>
+        <div className="px-3 pt-2.5">
+          <div className="bg-muted rounded px-2 py-1.5 border border-border">
+            <div className="flex gap-2">
+              <span className="text-[11px] text-muted-foreground flex-shrink-0">
+                Current:
+              </span>
+              <span className="text-[11px] text-foreground/70 line-clamp-1">
+                {currentPrompt}
+              </span>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Story Suggestions */}
-      <PromptSuggestions
-        selectedStoryId={selectedStoryId}
-        currentStep={currentStep}
-        onPromptSelect={handlePromptSelect}
-        disabled={!isReady}
-      />
+      {/* Input Mode Tabs */}
+      <div className="px-3 pt-3 pb-1">
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] text-muted-foreground uppercase mr-1">
+            Mode
+          </span>
+          {(Object.keys(MODE_LABELS) as InputMode[]).map((m) => (
+            <button key={m} className={tabCls(m)} onClick={() => setMode(m)}>
+              {MODE_LABELS[m]}
+            </button>
+          ))}
+        </div>
+      </div>
 
-      {/* Manual Input */}
-      <form onSubmit={handleManualSubmit} className="flex gap-2">
-        <Input
-          type="text"
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          placeholder="Or write your own prompt..."
-          disabled={!isReady || isUpsampling}
-          className="flex-1 h-8 text-sm"
-        />
+      {/* Mode-specific content */}
+      <div className="px-3 py-2.5 space-y-2.5">
+        {/* T2V — Story Suggestions + Manual Input */}
+        {mode === "t2v" && (
+          <>
+            <PromptSuggestions
+              selectedStoryId={selectedStoryId}
+              currentStep={currentStep}
+              onPromptSelect={handlePromptSelect}
+              disabled={!isReady}
+            />
+
+            <form onSubmit={handleManualSubmit} className="flex gap-2">
+              <Input
+                type="text"
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                placeholder="Or write your own prompt..."
+                disabled={!isReady || isUpsampling}
+                className="flex-1 h-8 text-sm"
+              />
+              <Button
+                type="submit"
+                size="sm"
+                variant="default"
+                disabled={!prompt.trim() || !isReady || isUpsampling}
+              >
+                {isUpsampling ? "Enhancing..." : "Send"}
+              </Button>
+            </form>
+
+            {hasEnhancement && (
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                Custom prompts will be automatically enhanced for best results.
+              </p>
+            )}
+          </>
+        )}
+
+        {/* I2V — Image upload + Prompt */}
+        {mode === "i2v" && (
+          <>
+            <div className="flex items-center gap-3">
+              <input
+                ref={imageFileRef}
+                type="file"
+                accept="image/*"
+                onChange={handleImageFileChange}
+                className="hidden"
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => imageFileRef.current?.click()}
+              >
+                {imageDataUrl ? "Change Image" : "Choose Image"}
+              </Button>
+
+              {imageDataUrl && (
+                <>
+                  <img
+                    src={imageDataUrl}
+                    alt="Preview"
+                    className="h-10 rounded border border-border"
+                  />
+                  {imageSent ? (
+                    <span className="text-green-500 text-[11px] font-medium">
+                      &#10003; Sent
+                    </span>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="default"
+                      onClick={handleImageSend}
+                      disabled={!isReady}
+                    >
+                      Send Image
+                    </Button>
+                  )}
+                </>
+              )}
+            </div>
+
+            <form onSubmit={handleManualSubmit} className="flex gap-2">
+              <Input
+                type="text"
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                placeholder="Describe the video to generate..."
+                disabled={!isReady || isUpsampling}
+                className="flex-1 h-8 text-sm"
+              />
+              <Button
+                type="submit"
+                size="sm"
+                variant="default"
+                disabled={!prompt.trim() || !isReady || isUpsampling}
+              >
+                {isUpsampling ? "Enhancing..." : "Send"}
+              </Button>
+            </form>
+          </>
+        )}
+
+        {/* Reference Video — Video upload + Prompt */}
+        {mode === "ref_video" && (
+          <>
+            <p className="text-[11px] text-muted-foreground">
+              Upload a short video as conditioning context for generation.
+            </p>
+
+            <div className="flex items-center gap-3 flex-wrap">
+              <input
+                ref={refFileRef}
+                type="file"
+                accept="video/*"
+                onChange={handleRefVideoChange}
+                className="hidden"
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => refFileRef.current?.click()}
+              >
+                {refFileName ? "Change Video" : "Choose Video"}
+              </Button>
+
+              {refFileName && (
+                <span className="text-[11px] text-muted-foreground truncate max-w-[200px]">
+                  {refFileName}
+                </span>
+              )}
+
+              {refPreviewUrl && refStatus === "idle" && (
+                <Button
+                  size="sm"
+                  variant="default"
+                  onClick={handleRefVideoSend}
+                  disabled={!isReady}
+                >
+                  Send Video
+                </Button>
+              )}
+
+              {refStatus === "uploading" && refProgress && (
+                <span className="text-[11px] text-primary font-medium">
+                  Sending frames... {refProgress.sent}/{refProgress.total}
+                </span>
+              )}
+              {refStatus === "ready" && (
+                <span className="text-[11px] text-green-500 font-medium">
+                  &#10003; Ready — {refProgress?.total ?? 0} frames sent
+                </span>
+              )}
+              {refStatus === "error" && (
+                <span className="text-[11px] text-destructive truncate max-w-[300px]">
+                  {refErrorMsg}
+                </span>
+              )}
+            </div>
+
+            {refPreviewUrl && (
+              <video
+                src={refPreviewUrl}
+                controls
+                muted
+                className="h-20 rounded border border-border"
+              />
+            )}
+
+            <form onSubmit={handleManualSubmit} className="flex gap-2">
+              <Input
+                type="text"
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                placeholder="Describe the video to generate..."
+                disabled={!isReady || isUpsampling}
+                className="flex-1 h-8 text-sm"
+              />
+              <Button
+                type="submit"
+                size="sm"
+                variant="default"
+                disabled={!prompt.trim() || !isReady || isUpsampling}
+              >
+                {isUpsampling ? "Enhancing..." : "Send"}
+              </Button>
+            </form>
+          </>
+        )}
+      </div>
+
+      {/* Controls section */}
+      <div className="flex items-center gap-2 px-3 py-2.5 border-t border-border bg-muted/30">
+        <span className="text-[11px] text-muted-foreground uppercase mr-1">
+          Controls
+        </span>
         <Button
-          type="submit"
-          size="sm"
+          size="xs"
           variant="default"
-          disabled={!prompt.trim() || !isReady || isUpsampling}
+          disabled={!isReady}
+          onClick={() => sendCommand("start", {})}
         >
-          {isUpsampling ? "Enhancing..." : "Send"}
+          Start
         </Button>
-      </form>
-
-      {/* Enhancement notice */}
-      {hasEnhancement && (
-        <p className="text-[11px] text-muted-foreground leading-relaxed">
-          Custom prompts will be automatically enhanced for best results.
-        </p>
-      )}
+        <Button
+          size="xs"
+          variant="outline"
+          disabled={!isReady}
+          onClick={() => sendCommand("pause", {})}
+        >
+          Pause
+        </Button>
+        <Button
+          size="xs"
+          variant="outline"
+          disabled={!isReady}
+          onClick={() => sendCommand("resume", {})}
+        >
+          Resume
+        </Button>
+      </div>
     </div>
   );
 }
