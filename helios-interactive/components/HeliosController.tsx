@@ -111,7 +111,6 @@ export function HeliosController({
 
   // I2V state
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
-  const [imageSent, setImageSent] = useState(false);
   const imageFileRef = useRef<HTMLInputElement | null>(null);
 
   // Reference video state
@@ -151,7 +150,6 @@ export function HeliosController({
     setCurrentStep(0);
     setPreviousPrompt(null);
     setImageDataUrl(null);
-    setImageSent(false);
     setRefStatus("idle");
     setRefFileName(null);
     setRefErrorMsg(null);
@@ -170,27 +168,42 @@ export function HeliosController({
     }
   }, [status]);
 
-  // Submit a prompt — in T2V mode the first prompt auto-starts,
-  // in I2V/V2V the user must manually click Start after setting conditioning.
-  // Follow-up prompts always use schedule_prompt.
+  // Submit a follow-up prompt (schedule_prompt) — only used after generation is running.
   const handleSubmitPrompt = async (promptText: string) => {
     if (!promptText.trim()) return;
 
-    if (currentFrameRef.current === 0) {
-      await sendCommand("set_prompt", { prompt: promptText.trim() });
-      if (mode === "t2v") {
-        await sendCommand("start", {});
-      }
-    } else {
-      const chunk = currentChunkRef.current + 2;
-      await sendCommand("schedule_prompt", {
-        prompt: promptText.trim(),
-        chunk,
-      });
-    }
+    const chunk = currentChunkRef.current + 2;
+    await sendCommand("schedule_prompt", {
+      prompt: promptText.trim(),
+      chunk,
+    });
 
     setPreviousPrompt(promptText.trim());
   };
+
+  // Start generation: auto-send all conditions once, then start.
+  const handleStart = useCallback(async () => {
+    if (status !== "ready") return;
+
+    // Send conditioning based on mode
+    if (mode === "i2v" && imageDataUrl) {
+      await sendCommand("set_image", { image_b64: imageDataUrl });
+    }
+    if (mode === "ref_video" && refPreviewUrl) {
+      await handleRefVideoSend();
+    }
+
+    // Send prompt
+    const finalPrompt = prompt.trim();
+    if (finalPrompt) {
+      const enhanced = await upsamplePrompt(finalPrompt);
+      await sendCommand("set_prompt", { prompt: enhanced });
+      setPreviousPrompt(enhanced);
+    }
+
+    // Start generation
+    await sendCommand("start", {});
+  }, [status, mode, imageDataUrl, refPreviewUrl, prompt, sendCommand]);
 
   // Upsample a prompt using the Anthropic API
   const upsamplePrompt = async (text: string): Promise<string> => {
@@ -225,7 +238,8 @@ export function HeliosController({
     return text;
   };
 
-  // Story preset selection
+  // Story preset selection — just sets the prompt text, Start sends it.
+  // After generation is running, selecting a follow-up step sends immediately.
   const handlePromptSelect = async (
     storyId: string,
     storyPrompt: StoryPrompt,
@@ -233,12 +247,18 @@ export function HeliosController({
   ) => {
     setSelectedStoryId(storyId);
     setCurrentStep(step);
-    await handleSubmitPrompt(storyPrompt.prompt);
+    if (currentFrameRef.current > 0) {
+      // Follow-up: schedule immediately
+      await handleSubmitPrompt(storyPrompt.prompt);
+    } else {
+      // Initial: just set the prompt, user clicks Start
+      setPrompt(storyPrompt.prompt);
+    }
   };
 
   const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!prompt.trim()) return;
+    if (!prompt.trim() || currentFrameRef.current === 0) return;
 
     const finalPrompt = await upsamplePrompt(prompt.trim());
     await handleSubmitPrompt(finalPrompt);
@@ -253,20 +273,12 @@ export function HeliosController({
       try {
         const dataUrl = await processImage(file);
         setImageDataUrl(dataUrl);
-        setImageSent(false);
       } catch (err) {
         console.error("[HeliosController] Failed to process image:", err);
       }
     },
     [],
   );
-
-  const handleImageSend = useCallback(() => {
-    if (!imageDataUrl || status !== "ready") return;
-    sendCommand("set_image", { image_b64: imageDataUrl });
-    setImageSent(true);
-    setTimeout(() => setImageSent(false), 1500);
-  }, [imageDataUrl, status, sendCommand]);
 
   // --- Reference video handlers ---
   const handleRefVideoChange = useCallback(
@@ -407,7 +419,16 @@ export function HeliosController({
             Mode
           </span>
           {(Object.keys(MODE_LABELS) as InputMode[]).map((m) => (
-            <button key={m} className={tabCls(m)} onClick={() => setMode(m)}>
+            <button
+              key={m}
+              className={tabCls(m)}
+              onClick={() => {
+                if (m !== mode) {
+                  handleReset();
+                  setMode(m);
+                }
+              }}
+            >
               {MODE_LABELS[m]}
             </button>
           ))}
@@ -431,18 +452,20 @@ export function HeliosController({
                 type="text"
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                placeholder="Or write your own prompt..."
+                placeholder={currentFrame > 0 ? "Schedule a follow-up prompt..." : "Or write your own prompt..."}
                 disabled={!isReady || isUpsampling}
                 className="flex-1 h-8 text-sm"
               />
-              <Button
-                type="submit"
-                size="sm"
-                variant="default"
-                disabled={!prompt.trim() || !isReady || isUpsampling}
-              >
-                {isUpsampling ? "Enhancing..." : "Send"}
-              </Button>
+              {currentFrame > 0 && (
+                <Button
+                  type="submit"
+                  size="sm"
+                  variant="default"
+                  disabled={!prompt.trim() || !isReady || isUpsampling}
+                >
+                  {isUpsampling ? "Enhancing..." : "Update"}
+                </Button>
+              )}
             </form>
 
             {hasEnhancement && (
@@ -473,27 +496,11 @@ export function HeliosController({
               </Button>
 
               {imageDataUrl && (
-                <>
-                  <img
-                    src={imageDataUrl}
-                    alt="Preview"
-                    className="h-10 rounded border border-border"
-                  />
-                  {imageSent ? (
-                    <span className="text-green-500 text-[11px] font-medium">
-                      &#10003; Sent
-                    </span>
-                  ) : (
-                    <Button
-                      size="sm"
-                      variant="default"
-                      onClick={handleImageSend}
-                      disabled={!isReady}
-                    >
-                      Send Image
-                    </Button>
-                  )}
-                </>
+                <img
+                  src={imageDataUrl}
+                  alt="Preview"
+                  className="h-10 rounded border border-border"
+                />
               )}
             </div>
 
@@ -502,18 +509,20 @@ export function HeliosController({
                 type="text"
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                placeholder="Describe the video to generate..."
+                placeholder={currentFrame > 0 ? "Schedule a follow-up prompt..." : "Describe the video to generate..."}
                 disabled={!isReady || isUpsampling}
                 className="flex-1 h-8 text-sm"
               />
-              <Button
-                type="submit"
-                size="sm"
-                variant="default"
-                disabled={!prompt.trim() || !isReady || isUpsampling}
-              >
-                {isUpsampling ? "Enhancing..." : "Send"}
-              </Button>
+              {currentFrame > 0 && (
+                <Button
+                  type="submit"
+                  size="sm"
+                  variant="default"
+                  disabled={!prompt.trim() || !isReady || isUpsampling}
+                >
+                  {isUpsampling ? "Enhancing..." : "Update"}
+                </Button>
+              )}
             </form>
           </>
         )}
@@ -547,17 +556,6 @@ export function HeliosController({
                 </span>
               )}
 
-              {refPreviewUrl && refStatus === "idle" && (
-                <Button
-                  size="sm"
-                  variant="default"
-                  onClick={handleRefVideoSend}
-                  disabled={!isReady}
-                >
-                  Send Video
-                </Button>
-              )}
-
               {refStatus === "uploading" && refProgress && (
                 <span className="text-[11px] text-primary font-medium">
                   Sending frames... {refProgress.sent}/{refProgress.total}
@@ -589,18 +587,20 @@ export function HeliosController({
                 type="text"
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                placeholder="Describe the video to generate..."
+                placeholder={currentFrame > 0 ? "Schedule a follow-up prompt..." : "Describe the video to generate..."}
                 disabled={!isReady || isUpsampling}
                 className="flex-1 h-8 text-sm"
               />
-              <Button
-                type="submit"
-                size="sm"
-                variant="default"
-                disabled={!prompt.trim() || !isReady || isUpsampling}
-              >
-                {isUpsampling ? "Enhancing..." : "Send"}
-              </Button>
+              {currentFrame > 0 && (
+                <Button
+                  type="submit"
+                  size="sm"
+                  variant="default"
+                  disabled={!prompt.trim() || !isReady || isUpsampling}
+                >
+                  {isUpsampling ? "Enhancing..." : "Update"}
+                </Button>
+              )}
             </form>
           </>
         )}
@@ -614,8 +614,8 @@ export function HeliosController({
         <Button
           size="xs"
           variant="default"
-          disabled={!isReady}
-          onClick={() => sendCommand("start", {})}
+          disabled={!isReady || refStatus === "uploading"}
+          onClick={handleStart}
         >
           Start
         </Button>
