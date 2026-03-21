@@ -183,7 +183,7 @@ export function HeliosController({
 
   // Start generation: auto-send all conditions once, then start.
   const handleStart = useCallback(async () => {
-    if (status !== "ready") return;
+    if (status !== "ready" || currentFrameRef.current > 0) return;
 
     // Send conditioning based on mode
     if (mode === "i2v" && imageDataUrl) {
@@ -327,7 +327,7 @@ export function HeliosController({
 
       setRefProgress({ sent: 0, total: totalFrames });
 
-      sendCommand("clear_video", {});
+      await sendCommand("clear_video", {});
 
       for (let i = 0; i < totalFrames; i++) {
         await new Promise<void>((resolve) => {
@@ -337,11 +337,11 @@ export function HeliosController({
 
         ctx.drawImage(video, 0, 0);
         const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
-        sendCommand("push_frame", { frame: dataUrl });
+        await sendCommand("push_frame", { frame: dataUrl });
         setRefProgress({ sent: i + 1, total: totalFrames });
       }
 
-      sendCommand("finish_video", {});
+      await sendCommand("finish_video", {});
       setRefStatus("ready");
     } catch (err) {
       console.error("[HeliosController] ref video frame extraction failed:", err);
@@ -614,7 +614,7 @@ export function HeliosController({
         <Button
           size="xs"
           variant="default"
-          disabled={!isReady || refStatus === "uploading"}
+          disabled={!isReady || refStatus === "uploading" || currentFrame > 0}
           onClick={handleStart}
         >
           Start
