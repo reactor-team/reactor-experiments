@@ -6,10 +6,6 @@ Examples built with Reactor's real-time video generation models.
 
 ## Examples
 
-### [`livecore/`](./livecore)
-
-A minimal demo using the **[Livecore](https://docs.reactor.inc/models/livecore)** model. Enter a text prompt or pick from preset stories, and watch Livecore generate video in real time. A good starting point for understanding how to connect to a model, schedule prompts, and display output with `ReactorView`.
-
 ### [`helios-interactive/`](./helios-interactive)
 
 A story-driven demo using the **Helios** model. Pick a narrative and progress through sequential story beats — follow-up prompts are scheduled into the running generation so transitions happen smoothly without resetting.
