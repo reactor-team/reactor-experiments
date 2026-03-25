@@ -14,7 +14,8 @@ Example: "A female astronaut in a full spacesuit, including an astronaut helmet,
 
 export async function POST(request: NextRequest) {
   try {
-    const { prompt, previousPrompt, anthropicApiKey } = await request.json();
+    const { prompt, previousPrompt, imageBase64, anthropicApiKey } =
+      await request.json();
 
     if (!prompt || typeof prompt !== "string") {
       return NextResponse.json(
@@ -44,9 +45,29 @@ export async function POST(request: NextRequest) {
         messages: [
           {
             role: "user",
-            content: previousPrompt
-              ? `The previous scene was: "${previousPrompt}"\n\nNow expand this next prompt. Focus on the new action and subject, but maintain visual continuity where it makes sense (same characters, setting, color palette): "${prompt}"`
-              : prompt,
+            content: imageBase64
+              ? [
+                  {
+                    type: "image",
+                    source: {
+                      type: "base64",
+                      media_type: "image/jpeg",
+                      data: imageBase64.replace(
+                        /^data:image\/\w+;base64,/,
+                        "",
+                      ),
+                    },
+                  },
+                  {
+                    type: "text",
+                    text: previousPrompt
+                      ? `The previous scene was: "${previousPrompt}"\n\nThe attached image is a reference. Now expand this next prompt, maintaining visual continuity: "${prompt}"`
+                      : `The attached image is a reference — incorporate what you see into the scene description. Expand this prompt: "${prompt}"`,
+                  },
+                ]
+              : previousPrompt
+                ? `The previous scene was: "${previousPrompt}"\n\nNow expand this next prompt. Focus on the new action and subject, but maintain visual continuity where it makes sense (same characters, setting, color palette): "${prompt}"`
+                : prompt,
           },
         ],
       }),

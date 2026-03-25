@@ -40,6 +40,44 @@ interface EventMessage {
 
 type HeliosMessage = StateMessage | EventMessage;
 
+function downsampleImage(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      let quality = 0.7,
+        maxW = 512,
+        maxH = 512,
+        result = "";
+      for (let i = 0; i < 5; i++) {
+        let w = img.width,
+          h = img.height;
+        if (w > maxW || h > maxH) {
+          const s = Math.min(maxW / w, maxH / h);
+          w = Math.round(w * s);
+          h = Math.round(h * s);
+        }
+        const c = document.createElement("canvas");
+        c.width = w;
+        c.height = h;
+        const ctx = c.getContext("2d")!;
+        ctx.drawImage(img, 0, 0, w, h);
+        result = c.toDataURL("image/jpeg", quality);
+        if (
+          Math.ceil((result.length - result.indexOf(",") - 1) * 0.75) <
+          64 * 1024
+        )
+          break;
+        maxW = Math.round(maxW * 0.75);
+        maxH = Math.round(maxH * 0.75);
+        quality = Math.max(0.3, quality - 0.1);
+      }
+      resolve(result);
+    };
+    img.onerror = reject;
+    img.src = URL.createObjectURL(file);
+  });
+}
+
 export function HeliosController({
   className,
   anthropicApiKey,
@@ -52,6 +90,9 @@ export function HeliosController({
   const [currentStep, setCurrentStep] = useState(0);
   const [isUpsampling, setIsUpsampling] = useState(false);
   const [previousPrompt, setPreviousPrompt] = useState<string | null>(null);
+  const [referenceImage, setReferenceImage] = useState<string | null>(null);
+  const [refPreview, setRefPreview] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const currentChunkRef = useRef(0);
   const currentFrameRef = useRef(0);
 
@@ -76,10 +117,14 @@ export function HeliosController({
     setPrompt("");
     setCurrentFrame(0);
     setCurrentChunk(0);
+    currentChunkRef.current = 0;
+    currentFrameRef.current = 0;
     setCurrentPrompt(null);
     setSelectedStoryId(null);
     setCurrentStep(0);
     setPreviousPrompt(null);
+    setReferenceImage(null);
+    setRefPreview(null);
   };
 
   // Reset when disconnected
@@ -88,6 +133,25 @@ export function HeliosController({
       resetUIState();
     }
   }, [status]);
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const preview = URL.createObjectURL(file);
+    setRefPreview(preview);
+    const base64 = await downsampleImage(file);
+    setReferenceImage(base64);
+    await sendCommand("set_image", { image_b64: base64 });
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const clearRefImage = async () => {
+    setReferenceImage(null);
+    setRefPreview(null);
+    try {
+      await sendCommand("clear_image", {});
+    } catch {}
+  };
 
   // Submit a prompt — first prompt uses set_prompt + start,
   // follow-up prompts use schedule_prompt at currentChunk + 2
@@ -119,6 +183,7 @@ export function HeliosController({
       const body: {
         prompt: string;
         previousPrompt?: string;
+        imageBase64?: string;
         anthropicApiKey: string;
       } = {
         prompt: text,
@@ -126,6 +191,9 @@ export function HeliosController({
       };
       if (previousPrompt) {
         body.previousPrompt = previousPrompt;
+      }
+      if (referenceImage) {
+        body.imageBase64 = referenceImage;
       }
       const res = await fetch("/api/upsample", {
         method: "POST",
@@ -222,6 +290,72 @@ export function HeliosController({
         onPromptSelect={handlePromptSelect}
         disabled={!isReady}
       />
+
+      {/* Reference Image */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleImageUpload}
+          disabled={!isReady}
+          className="hidden"
+        />
+        {refPreview ? (
+          <div className="flex items-center gap-2">
+            <div className="w-10 h-10 rounded-lg overflow-hidden border border-border shrink-0">
+              <img
+                src={refPreview}
+                alt="Ref"
+                className="w-full h-full object-cover"
+              />
+            </div>
+            <div className="flex flex-col gap-0.5">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={!isReady}
+                className="text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors text-left"
+              >
+                Change image
+              </button>
+              <button
+                type="button"
+                onClick={clearRefImage}
+                className="text-[11px] text-muted-foreground hover:text-destructive transition-colors text-left"
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={!isReady}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-dashed border-border hover:border-foreground/20 hover:bg-muted/50 disabled:opacity-40 transition-colors"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="text-muted-foreground"
+            >
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+              <circle cx="8.5" cy="8.5" r="1.5" />
+              <polyline points="21 15 16 10 5 21" />
+            </svg>
+            <span className="text-[11px] text-muted-foreground">
+              Upload reference image
+            </span>
+          </button>
+        )}
+      </div>
 
       {/* Manual Input */}
       <form onSubmit={handleManualSubmit} className="flex gap-2">
