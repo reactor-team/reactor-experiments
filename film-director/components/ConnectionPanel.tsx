@@ -131,7 +131,7 @@ export function ConnectionPanel({
             size="default" 
             variant="default" 
             onClick={() => connect()}
-            disabled={!apiKey && !isLocalMode}
+            disabled={(!apiKey || isFetching) && !isLocalMode}
             className="min-w-[100px]"
           >
             Connect
