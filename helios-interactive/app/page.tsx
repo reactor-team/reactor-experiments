@@ -18,7 +18,6 @@ function ResetButton() {
   const handleReset = async () => {
     try {
       await sendCommand("reset", {});
-      console.log("Reset command sent");
     } catch (error) {
       console.error("Failed to send reset:", error);
     }
@@ -59,48 +58,57 @@ export default function Home() {
         {/* Header */}
         <HeaderControls />
 
-        {/* Main content - fills remaining viewport */}
-        <main className="flex-1 min-h-0 p-3 md:p-4">
-          <div className="h-full max-w-5xl mx-auto flex flex-col gap-3">
-            {/* Connection panel - above the video */}
-            <ConnectionPanel
-              onJwtTokenChange={setJwtToken}
-              onLocalModeChange={setIsLocalMode}
-              className="shrink-0"
-            />
+        {/* Main content — side-by-side on desktop, stacked on mobile */}
+        <main className="flex-1 min-h-0 flex flex-col md:flex-row">
+          {/* Left: Control panel */}
+          <aside className="md:w-80 lg:w-96 md:h-full overflow-y-auto border-b md:border-b-0 md:border-r border-border p-3 md:p-4 space-y-4 shrink-0">
+            {/* Section: Connection */}
+            <section className="space-y-2">
+              <h2 className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                Connection
+              </h2>
+              <ConnectionPanel
+                onJwtTokenChange={setJwtToken}
+                onLocalModeChange={setIsLocalMode}
+              />
+            </section>
 
-            {/* Video view - flexes to fill available space */}
-            <div className="relative bg-black rounded-lg overflow-hidden border border-border flex-1 min-h-0">
-              {/* Video view */}
-              <div className="absolute inset-0">
-                <ReactorView className="w-full h-full object-contain" videoObjectFit="cover" />
-              </div>
+            <div className="border-t border-border" />
 
-              {/* Top-left: Reset button */}
-              <div className="absolute top-3 left-3 pointer-events-auto">
-                <ResetButton />
-              </div>
-            </div>
-
-            {/* Prompt enhancement (optional) */}
-            <div className="flex items-center gap-2 shrink-0">
-              <label className="text-xs font-medium text-foreground whitespace-nowrap uppercase">
-                Anthropic Key
-              </label>
+            {/* Section: API Keys */}
+            <section className="space-y-2">
+              <h2 className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                Prompt Enhancement
+              </h2>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                Add an Anthropic API key to automatically enhance your custom prompts with richer scene details.
+              </p>
               <input
                 type="password"
                 value={anthropicApiKey}
                 onChange={(e) => setAnthropicApiKey(e.target.value)}
-                placeholder="Optional: enables prompt enhancement for better results"
-                className="flex-1 h-8 rounded-md border border-border bg-card px-3 text-sm text-foreground placeholder:text-muted-foreground"
+                placeholder="sk-ant-... (optional)"
+                className="w-full h-8 rounded-md border border-border bg-card px-3 text-sm text-foreground placeholder:text-muted-foreground"
               />
-            </div>
+            </section>
 
-            {/* Controls panel - stays at bottom */}
+            <div className="border-t border-border" />
+
+            {/* Section: Generation controls */}
             <HeliosController
-              className="shrink-0"
               anthropicApiKey={anthropicApiKey || undefined}
             />
+          </aside>
+
+          {/* Right: Video */}
+          <div className="flex-1 min-h-0 min-w-0 p-3 md:p-4 flex items-center justify-center">
+            <div className="relative bg-black rounded-lg overflow-hidden border border-border w-full h-full max-h-full">
+              <ReactorView className="absolute inset-0 w-full h-full" videoObjectFit="cover" />
+
+              <div className="absolute top-3 left-3 pointer-events-auto">
+                <ResetButton />
+              </div>
+            </div>
           </div>
         </main>
       </ReactorProvider>
