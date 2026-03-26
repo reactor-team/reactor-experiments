@@ -81,13 +81,13 @@ export default function Home() {
                 Prompt Enhancement
               </h2>
               <p className="text-[11px] text-muted-foreground leading-relaxed">
-                Add an Anthropic API key to automatically enhance your custom prompts with richer scene details.
+                Add an Anthropic API key to automatically enhance your custom prompts with richer scene details. Recommended for best results.
               </p>
               <input
                 type="password"
                 value={anthropicApiKey}
                 onChange={(e) => setAnthropicApiKey(e.target.value)}
-                placeholder="sk-ant-... (optional)"
+                placeholder="sk-ant-... (recommended)"
                 className="w-full h-8 rounded-md border border-border bg-card px-3 text-sm text-foreground placeholder:text-muted-foreground"
               />
             </section>
