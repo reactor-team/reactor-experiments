@@ -78,6 +78,37 @@ function downsampleImage(file: File): Promise<string> {
   });
 }
 
+function ExpandablePrompt({ prompt }: { prompt: string }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <button
+      type="button"
+      onClick={() => setExpanded((e) => !e)}
+      className="w-full text-left bg-muted/50 rounded px-2.5 py-2 border border-border hover:border-border/80 transition-colors cursor-pointer"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <span className="text-[10px] text-muted-foreground uppercase tracking-wide block mb-0.5">
+            Now playing
+          </span>
+          <p
+            className={cn(
+              "text-[11px] text-foreground/80 break-words",
+              !expanded && "line-clamp-2",
+            )}
+          >
+            {prompt}
+          </p>
+        </div>
+        <span className="text-[10px] text-muted-foreground shrink-0 mt-3">
+          {expanded ? "\u25B2" : "\u25BC"}
+        </span>
+      </div>
+    </button>
+  );
+}
+
 export function HeliosController({
   className,
   anthropicApiKey,
@@ -200,7 +231,11 @@ export function HeliosController({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      if (!res.ok) return text;
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        console.error("Upsample API error:", res.status, err);
+        return text;
+      }
       const data = await res.json();
       if (data.upsampledPrompt) return data.upsampledPrompt;
     } catch (err) {
@@ -242,45 +277,36 @@ export function HeliosController({
   return (
     <div
       className={cn(
-        "w-full p-3 bg-card rounded-lg border border-border space-y-2.5",
+        "w-full space-y-3",
         className,
       )}
     >
-      {/* Header with Chunk Counter and Reset */}
+      {/* Generation header */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3 flex-wrap">
-          <span className="text-xs font-medium text-foreground uppercase">
-            Prompts
-          </span>
-          <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-muted">
-            <span className="text-xs text-muted-foreground">Chunk:</span>
-            <span className="text-xs font-mono tabular-nums text-green-500">
+        <h2 className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+          Generation
+        </h2>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-muted">
+            <span className="text-[10px] text-muted-foreground">Chunk</span>
+            <span className="text-[10px] font-mono tabular-nums text-green-500">
               {currentChunk}
             </span>
           </div>
+          <Button
+            size="xs"
+            variant="destructive"
+            onClick={handleReset}
+            disabled={!isReady}
+          >
+            Reset
+          </Button>
         </div>
-        <Button
-          size="xs"
-          variant="destructive"
-          onClick={handleReset}
-          disabled={!isReady}
-        >
-          Reset
-        </Button>
       </div>
 
       {/* Current Prompt Display */}
       {currentPrompt && (
-        <div className="bg-muted rounded px-2 py-1.5 border border-border">
-          <div className="flex gap-2">
-            <span className="text-[11px] text-muted-foreground flex-shrink-0">
-              Current:
-            </span>
-            <span className="text-[11px] text-foreground/70 line-clamp-1">
-              {currentPrompt}
-            </span>
-          </div>
-        </div>
+        <ExpandablePrompt prompt={currentPrompt} />
       )}
 
       {/* Story Suggestions */}
@@ -377,11 +403,14 @@ export function HeliosController({
         </Button>
       </form>
 
-      {/* Enhancement notice */}
+      {/* Enhancement indicator */}
       {hasEnhancement && (
-        <p className="text-[11px] text-muted-foreground leading-relaxed">
-          Custom prompts will be automatically enhanced for best results.
-        </p>
+        <div className="flex items-center gap-1.5">
+          <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
+          <span className="text-[10px] text-muted-foreground">
+            Prompt enhancement active
+          </span>
+        </div>
       )}
     </div>
   );

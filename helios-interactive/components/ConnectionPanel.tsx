@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useReactor, fetchInsecureJwtToken } from "@reactor-team/js-sdk";
+import { useReactor, fetchInsecureToken } from "@reactor-team/js-sdk";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -28,7 +28,6 @@ export function ConnectionPanel({
   const [error, setError] = useState<string | null>(null);
   const [isLocalMode, setIsLocalMode] = useState(false);
 
-  // Memoize callbacks to prevent unnecessary effect triggers
   const handleJwtChange = useCallback(onJwtTokenChange, [onJwtTokenChange]);
   const handleLocalChange = useCallback(onLocalModeChange, [onLocalModeChange]);
 
@@ -36,7 +35,6 @@ export function ConnectionPanel({
   const isConnected = status === "ready";
 
   useEffect(() => {
-    // Check if user entered "local" to enable local mode
     if (apiKey.toLowerCase() === "local") {
       setIsLocalMode(true);
       handleLocalChange(true);
@@ -45,7 +43,6 @@ export function ConnectionPanel({
       return;
     }
 
-    // Not local mode
     setIsLocalMode(false);
     handleLocalChange(false);
 
@@ -59,7 +56,7 @@ export function ConnectionPanel({
       setIsFetching(true);
       setError(null);
       try {
-        const token = await fetchInsecureJwtToken(apiKey);
+        const token = await fetchInsecureToken(apiKey);
         handleJwtChange(token);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to fetch token");
@@ -72,76 +69,81 @@ export function ConnectionPanel({
     return () => clearTimeout(timeoutId);
   }, [apiKey, handleJwtChange, handleLocalChange]);
 
+  const statusLabel =
+    status === "ready"
+      ? "Connected"
+      : status === "waiting"
+        ? "Waiting for GPU..."
+        : status === "connecting"
+          ? "Connecting..."
+          : "Disconnected";
+
   return (
-    <div className={cn("flex flex-col sm:flex-row items-stretch sm:items-center gap-2 px-3 py-2 bg-card rounded-lg border border-border", className)}>
+    <div className={cn("space-y-2", className)}>
       {/* API Key Input */}
-      <div className="flex-1 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-        <label className="text-xs font-medium text-foreground whitespace-nowrap uppercase">
-          API Key
-        </label>
-        <div className="relative flex-1">
-          <Input
-            type="password"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder="Enter your API key (rk_...)"
-            disabled={isConnected}
-            className={cn(
-              "h-8 text-sm pr-8",
-              isLocalMode && "border-green-500/50",
-              error && "border-destructive"
-            )}
-          />
-          {/* Status indicators */}
-          <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
-            {isFetching && (
-              <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-            )}
-            {isLocalMode && !isFetching && (
-              <span className="text-[10px] text-green-500 font-medium uppercase">Local</span>
-            )}
-            {error && !isFetching && (
-              <span className="w-2 h-2 bg-destructive rounded-full" title={error} />
-            )}
-          </div>
+      <div className="relative">
+        <Input
+          type="password"
+          value={apiKey}
+          onChange={(e) => setApiKey(e.target.value)}
+          placeholder="Reactor API key (rk_...)"
+          disabled={isConnected}
+          className={cn(
+            "h-8 text-sm pr-8",
+            isLocalMode && "border-green-500/50",
+            error && "border-destructive",
+          )}
+        />
+        <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+          {isFetching && (
+            <div className="w-3.5 h-3.5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          )}
+          {isLocalMode && !isFetching && (
+            <span className="text-[10px] text-green-500 font-medium uppercase">
+              Local
+            </span>
+          )}
+          {error && !isFetching && (
+            <span
+              className="w-2 h-2 bg-destructive rounded-full"
+              title={error}
+            />
+          )}
         </div>
       </div>
 
-      {/* Connection Button */}
-      <div className="flex items-center gap-3">
-        {/* Status indicator */}
+      {/* Status + Connect */}
+      <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div
             className={cn(
-              "w-2.5 h-2.5 rounded-full transition-colors",
+              "w-2 h-2 rounded-full transition-colors",
               status === "disconnected" && "bg-muted-foreground",
-              status === "connecting" && "bg-yellow-500 animate-pulse",
-              status === "waiting" && "bg-yellow-500 animate-pulse",
-              status === "ready" && "bg-green-500"
+              isConnecting && "bg-yellow-500 animate-pulse",
+              status === "ready" && "bg-green-500",
             )}
           />
-          <span className="text-xs text-muted-foreground capitalize hidden sm:inline">
-            {status === "ready" ? "Connected" : status}
+          <span className="text-[11px] text-muted-foreground">
+            {statusLabel}
           </span>
         </div>
 
-        {/* Connect/Disconnect button */}
         {status === "disconnected" ? (
-          <Button 
-            size="sm" 
-            variant="default" 
+          <Button
+            size="xs"
+            variant="default"
             onClick={() => connect()}
-            disabled={!apiKey && !isLocalMode}
-            className="min-w-[90px]"
+            disabled={(!apiKey || isFetching) && !isLocalMode}
+            className="h-7 px-3 text-xs"
           >
             Connect
           </Button>
         ) : (
-          <Button 
-            size="sm" 
-            variant="secondary" 
-            onClick={() => disconnect()} 
-            className="min-w-[90px]"
+          <Button
+            size="xs"
+            variant="secondary"
+            onClick={() => disconnect()}
+            className="h-7 px-3 text-xs"
           >
             {isConnecting ? "Cancel" : "Disconnect"}
           </Button>
