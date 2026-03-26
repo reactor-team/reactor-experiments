@@ -81,19 +81,19 @@ export function PromptSuggestions({
             key={prompt.id}
             onClick={() => onPromptSelect(story.id, prompt, step)}
             disabled={disabled}
-            className="group rounded border border-border bg-muted/50 hover:bg-muted px-2.5 py-2 text-left transition-all duration-200 hover:border-foreground/20 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="group rounded-lg border border-border bg-muted/50 hover:bg-muted px-2.5 py-2 text-left transition-all duration-200 hover:border-foreground/20 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <div className="flex items-start justify-between gap-2 mb-0.5">
-              <h3 className="text-[11px] font-medium text-foreground uppercase">
+              <h3 className="text-xs font-medium text-foreground">
                 {prompt.title}
               </h3>
               {isStartingPrompts && (
-                <span className="text-[10px] text-muted-foreground uppercase">
+                <span className="text-[10px] text-muted-foreground uppercase shrink-0">
                   Start
                 </span>
               )}
             </div>
-            <p className="text-[11px] text-muted-foreground line-clamp-1">
+            <p className="text-[11px] text-muted-foreground line-clamp-2 leading-relaxed">
               {prompt.prompt}
             </p>
           </button>
