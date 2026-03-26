@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Film Director - Helios Demo",
+  title: "Reactor - Helios Film Director",
   description: "A video editor-style demo for the Helios model",
 };
 

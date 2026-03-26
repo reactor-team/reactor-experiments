@@ -10,7 +10,7 @@ import type { StoryPrompt } from "@/lib/prompts";
 
 interface HeliosControllerProps {
   className?: string;
-  anthropicApiKey?: string;
+  hasEnhancement?: boolean;
 }
 
 // Types for the Helios model message protocol
@@ -111,7 +111,7 @@ function ExpandablePrompt({ prompt }: { prompt: string }) {
 
 export function HeliosController({
   className,
-  anthropicApiKey,
+  hasEnhancement,
 }: HeliosControllerProps) {
   const [prompt, setPrompt] = useState("");
   const [currentFrame, setCurrentFrame] = useState(0);
@@ -205,9 +205,9 @@ export function HeliosController({
     setPreviousPrompt(promptText.trim());
   };
 
-  // Upsample a prompt using the Anthropic API (only if key is provided)
+  // Upsample a prompt using the server-side Anthropic API
   const upsamplePrompt = async (text: string): Promise<string> => {
-    if (!anthropicApiKey) return text;
+    if (!hasEnhancement) return text;
 
     try {
       setIsUpsampling(true);
@@ -215,10 +215,8 @@ export function HeliosController({
         prompt: string;
         previousPrompt?: string;
         imageBase64?: string;
-        anthropicApiKey: string;
       } = {
         prompt: text,
-        anthropicApiKey,
       };
       if (previousPrompt) {
         body.previousPrompt = previousPrompt;
@@ -272,7 +270,6 @@ export function HeliosController({
   }, [sendCommand]);
 
   const isReady = status === "ready";
-  const hasEnhancement = !!anthropicApiKey;
 
   return (
     <div
@@ -281,27 +278,22 @@ export function HeliosController({
         className,
       )}
     >
-      {/* Generation header */}
+      {/* Reset + chunk counter */}
       <div className="flex items-center justify-between">
-        <h2 className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
-          Generation
-        </h2>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-muted">
-            <span className="text-[10px] text-muted-foreground">Chunk</span>
-            <span className="text-[10px] font-mono tabular-nums text-green-500">
-              {currentChunk}
-            </span>
-          </div>
-          <Button
-            size="xs"
-            variant="destructive"
-            onClick={handleReset}
-            disabled={!isReady}
-          >
-            Reset
-          </Button>
+        <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-muted">
+          <span className="text-[10px] text-muted-foreground">Chunk</span>
+          <span className="text-[10px] font-mono tabular-nums text-green-500">
+            {currentChunk}
+          </span>
         </div>
+        <Button
+          size="xs"
+          variant="destructive"
+          onClick={handleReset}
+          disabled={!isReady}
+        >
+          Reset
+        </Button>
       </div>
 
       {/* Current Prompt Display */}
@@ -403,14 +395,11 @@ export function HeliosController({
         </Button>
       </form>
 
-      {/* Enhancement indicator */}
-      {hasEnhancement && (
-        <div className="flex items-center gap-1.5">
-          <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
-          <span className="text-[10px] text-muted-foreground">
-            Prompt enhancement active
-          </span>
-        </div>
+      {/* Enhancement hint */}
+      {!hasEnhancement && (
+        <p className="text-[10px] text-muted-foreground">
+          Add ANTHROPIC_API_KEY or OPENAI_API_KEY to .env.local for automatic prompt enhancement.
+        </p>
       )}
     </div>
   );

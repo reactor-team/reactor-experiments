@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { ReactorProvider } from "@reactor-team/js-sdk";
 import Image from "next/image";
-import { ConnectionPanel } from "@/components/ConnectionPanel";
+import { StatusBar } from "@/components/StatusBar";
 import { FilmDirector } from "@/components/FilmDirector";
 import { Button } from "@/components/ui/button";
 import { MAX_CHUNKS } from "@/lib/constants";
@@ -11,15 +11,28 @@ import { Maximize2, Minimize2 } from "lucide-react";
 
 export default function Page() {
   const [jwtToken, setJwtToken] = useState<string | undefined>(undefined);
-  const [isLocalMode, setIsLocalMode] = useState(false);
+  const [tokenError, setTokenError] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // Ensure dark mode is applied to html element
   useEffect(() => {
     document.documentElement.classList.add("dark");
   }, []);
 
-  // Handle fullscreen changes (e.g., user pressing Escape)
+  // Fetch JWT token from server
+  useEffect(() => {
+    fetch("/api/token")
+      .then((res) => {
+        if (!res.ok) throw new Error();
+        return res.json();
+      })
+      .then(({ jwt }) => setJwtToken(jwt))
+      .catch(() => {
+        setTokenError(
+          "Set REACTOR_API_KEY in .env.local, then restart the dev server",
+        );
+      });
+  }, []);
+
   useEffect(() => {
     const handleFullscreenChange = () => {
       setIsFullscreen(!!document.fullscreenElement);
@@ -47,7 +60,6 @@ export default function Page() {
       <ReactorProvider
         modelName="helios"
         jwtToken={jwtToken}
-        local={isLocalMode}
         connectOptions={{ autoConnect: false }}
       >
         {/* Header */}
@@ -60,7 +72,6 @@ export default function Page() {
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Fullscreen toggle */}
             <Button
               size="sm"
               variant="ghost"
@@ -80,7 +91,6 @@ export default function Page() {
               )}
             </Button>
 
-            {/* Logo */}
             <Image
               src="/logo/symbol-night.svg"
               alt="Reactor Logo"
@@ -98,26 +108,24 @@ export default function Page() {
           </div>
         </header>
 
+        {/* Status bar */}
+        {!isFullscreen && (
+          <div className="px-4 py-2 border-b border-border bg-card/50">
+            <StatusBar tokenError={tokenError} />
+          </div>
+        )}
+
         {/* Main content */}
         <main className={`${isFullscreen ? "h-[calc(100vh-49px)] flex flex-col" : "p-4 md:p-6"}`}>
-          <div className={`${isFullscreen ? "flex-1 flex flex-col min-h-0" : "max-w-6xl mx-auto space-y-4"}`}>
-            {/* Connection panel - above the content */}
-            {!isFullscreen && (
-              <ConnectionPanel
-                onJwtTokenChange={setJwtToken}
-                onLocalModeChange={setIsLocalMode}
-              />
-            )}
-
-            {/* Film Director */}
+          <div className={`${isFullscreen ? "flex-1 flex flex-col min-h-0" : "max-w-6xl mx-auto"}`}>
             <div className={`${
-              isFullscreen 
-                ? "flex-1 min-h-0" 
+              isFullscreen
+                ? "flex-1 min-h-0"
                 : "bg-card rounded-lg border border-border overflow-hidden"
             }`}>
-              <FilmDirector 
-                maxChunks={MAX_CHUNKS} 
-                className={isFullscreen ? "h-full" : "h-[70vh] min-h-[500px]"} 
+              <FilmDirector
+                maxChunks={MAX_CHUNKS}
+                className={isFullscreen ? "h-full" : "h-[70vh] min-h-[500px]"}
               />
             </div>
           </div>

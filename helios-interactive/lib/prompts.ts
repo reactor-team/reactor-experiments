@@ -65,7 +65,7 @@ export const stories: Story[] = [
     theme: "from-gray-900 to-blue-900",
     startPrompt: {
       id: "rain-0",
-      title: "In the Rain",
+      title: "Under the Rain",
       prompt:
         "A young man standing in the rain, looking up at the sky with a warm, inviting smile on his face. He is dressed in a fitted dark jacket and a white t-shirt that clings to his frame as droplets of water fall around him. His hair is gently tousled from the rain, framing his sharp features. The background shows a blurred cityscape with tall buildings and the faint glow of streetlights. The scene captures the serene beauty of a rainy evening. Medium close-up, static shot focusing on the man's face and upper body.",
     },
@@ -78,7 +78,7 @@ export const stories: Story[] = [
       },
       {
         id: "rain-2",
-        title: "A Sparrow Lands",
+        title: "A Sparrow Finds Him",
         prompt:
           "The young man in the soaked dark jacket keeps his right hand extended palm-up in the rain. A small sparrow flutters down through the falling droplets and lands gently on his open palm, its tiny feet gripping his wet fingers. He watches the bird with a soft, surprised smile, barely breathing so as not to startle it. The sparrow ruffles its damp feathers and tilts its head, meeting his gaze. Rain continues to fall steadily around them both, with the blurred gray cityscape and warm streetlights glowing behind. Medium close-up, static shot focusing on the man's face and upper body.",
       },
