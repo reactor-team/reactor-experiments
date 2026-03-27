@@ -122,10 +122,15 @@ export function HeliosController({
   const [isUpsampling, setIsUpsampling] = useState(false);
   const [previousPrompt, setPreviousPrompt] = useState<string | null>(null);
   const [referenceImage, setReferenceImage] = useState<string | null>(null);
+  const [isStarting, setIsStarting] = useState(false);
   const [refPreview, setRefPreview] = useState<string | null>(null);
+  const [selectedExample, setSelectedExample] = useState<string | null>(null);
+  const skipUpsampleRef = useRef(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const currentChunkRef = useRef(0);
   const currentFrameRef = useRef(0);
+  const isResettingRef = useRef(false);
 
   const { sendCommand, status } = useReactor((state) => ({
     sendCommand: state.sendCommand,
@@ -136,6 +141,16 @@ export function HeliosController({
   useReactorMessage((message: HeliosMessage) => {
     if (message?.type === "state") {
       const state = message.data;
+
+      // After reset, ignore stale state messages until frame is back to 0
+      if (isResettingRef.current) {
+        if (state.current_frame === 0) {
+          isResettingRef.current = false;
+        } else {
+          return;
+        }
+      }
+
       setCurrentFrame(state.current_frame);
       setCurrentChunk(state.current_chunk);
       currentChunkRef.current = state.current_chunk;
@@ -156,6 +171,8 @@ export function HeliosController({
     setPreviousPrompt(null);
     setReferenceImage(null);
     setRefPreview(null);
+    setSelectedExample(null);
+    setIsStarting(false);
   };
 
   // Reset when disconnected
@@ -164,6 +181,53 @@ export function HeliosController({
       resetUIState();
     }
   }, [status]);
+
+  // Auto-resize textarea when prompt changes programmatically
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (el) {
+      el.style.height = "auto";
+      el.style.height = Math.min(el.scrollHeight, 300) + "px";
+    }
+  }, [prompt]);
+
+  const handleExampleImage = async (imageSrc: string, imagePrompt: string) => {
+    setIsStarting(true);
+    setSelectedExample(imageSrc);
+    setRefPreview(imageSrc);
+    try {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      await new Promise<void>((resolve, reject) => {
+        img.onload = async () => {
+          try {
+            const c = document.createElement("canvas");
+            c.width = img.width;
+            c.height = img.height;
+            const ctx = c.getContext("2d")!;
+            ctx.drawImage(img, 0, 0);
+            const dataUrl = c.toDataURL("image/jpeg", 0.95);
+            const res = await fetch(dataUrl);
+            const blob = await res.blob();
+            const file = new File([blob], "example.jpg", { type: "image/jpeg" });
+            const base64 = await downsampleImage(file);
+            setReferenceImage(base64);
+            await sendCommand("set_image", { image_b64: base64 });
+            await handleSubmitPrompt(imagePrompt);
+            resolve();
+          } catch (err) {
+            reject(err);
+          }
+        };
+        img.onerror = reject;
+        img.src = imageSrc;
+      });
+    } catch (err) {
+      console.error("Failed to start from example image:", err);
+    } finally {
+      setIsStarting(false);
+    }
+  };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -244,27 +308,34 @@ export function HeliosController({
     return text;
   };
 
-  // Story preset selection — no upsampling needed
   const handlePromptSelect = async (
     storyId: string,
     storyPrompt: StoryPrompt,
     step: number,
   ) => {
+    setIsStarting(true);
     setSelectedStoryId(storyId);
     setCurrentStep(step);
-    await handleSubmitPrompt(storyPrompt.prompt);
+    try {
+      await handleSubmitPrompt(storyPrompt.prompt);
+    } finally {
+      setIsStarting(false);
+    }
   };
 
   const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!prompt.trim()) return;
 
-    const finalPrompt = await upsamplePrompt(prompt.trim());
+    const shouldSkip = skipUpsampleRef.current;
+    skipUpsampleRef.current = false;
+    const finalPrompt = shouldSkip ? prompt.trim() : await upsamplePrompt(prompt.trim());
     await handleSubmitPrompt(finalPrompt);
     setPrompt("");
   };
 
   const handleReset = useCallback(async () => {
+    isResettingRef.current = true;
     await sendCommand("reset", {});
     resetUIState();
   }, [sendCommand]);
@@ -306,8 +377,76 @@ export function HeliosController({
         selectedStoryId={selectedStoryId}
         currentStep={currentStep}
         onPromptSelect={handlePromptSelect}
-        disabled={!isReady}
+        disabled={!isReady || isStarting}
       />
+
+      {/* Example Images — always visible, highlight selected */}
+      <div className="space-y-1.5">
+        <span className="text-[11px] text-muted-foreground uppercase">
+          {selectedExample ? "Starting image" : "Or start from an image"}
+        </span>
+        <div className="grid grid-cols-2 gap-2">
+          {[
+            {
+              src: "/images/example_1.png",
+              title: "Village Puppy",
+              prompt:
+                "A fluffy golden retriever puppy wearing a small red bandana sits on a stone doorstep of a charming European village, number 12 on the blue wooden door behind it. The puppy has big round dark eyes and tilts its head slightly with curiosity. Warm afternoon sunlight fills the cobblestone street lined with colorful flower pots of red geraniums, purple hydrangeas, and pink blooms. Stone and pastel-painted buildings stretch into the background. Pixar-style 3D render with vibrant saturated colors. Medium close-up shot focusing on the puppy.",
+            },
+            {
+              src: "/images/example_2.png",
+              title: "Mars Explorer",
+              prompt:
+                "An astronaut in a weathered orange spacesuit crouches on the rust-red surface of Mars, reaching forward to brush dust off a strange dark rock formation with one gloved hand. The golden visor catches the pale Martian sun as the astronaut shifts weight and leans closer to inspect the find. A massive dust storm rolls in from the distance beyond deep canyon cliffs, sending plumes of brown haze across the amber sky. Wind tugs at loose straps on the suit. Photorealistic, desaturated warm tones, cinematic wide shot capturing the explorer mid-discovery on the vast desolate landscape.",
+            },
+          ].map((example) => {
+            const isSelected = selectedExample === example.src;
+            const isOther = selectedExample && !isSelected;
+
+            return (
+              <button
+                key={example.src}
+                onClick={() =>
+                  !isSelected &&
+                  handleExampleImage(example.src, example.prompt)
+                }
+                disabled={!isReady || isSelected || isStarting}
+                className={cn(
+                  "group rounded-lg overflow-hidden border transition-all duration-300",
+                  isSelected
+                    ? "border-green-500/40 ring-1 ring-green-500/20"
+                    : isOther
+                      ? "border-border/50 opacity-40"
+                      : "border-border hover:border-foreground/20",
+                  (!isReady || isStarting) &&
+                    !isSelected &&
+                    "opacity-40 cursor-not-allowed",
+                )}
+              >
+                <div className="aspect-video relative">
+                  <img
+                    src={example.src}
+                    alt={example.title}
+                    className="w-full h-full object-cover"
+                  />
+                  <div
+                    className={cn(
+                      "absolute inset-0 transition-colors duration-300",
+                      isSelected
+                        ? "bg-black/20"
+                        : "bg-black/40 group-hover:bg-black/20",
+                    )}
+                  />
+                  <span className="absolute bottom-1.5 left-2 text-[11px] font-medium text-white">
+                    {isSelected && "\u2713 "}
+                    {example.title}
+                  </span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       {/* Reference Image */}
       <div className="flex items-center gap-2 flex-wrap">
@@ -378,8 +517,14 @@ export function HeliosController({
       {/* Manual Input */}
       <form onSubmit={handleManualSubmit} className="space-y-2">
         <textarea
+          ref={textareaRef}
           value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
+          onChange={(e) => {
+            setPrompt(e.target.value);
+            // Auto-grow
+            e.target.style.height = "auto";
+            e.target.style.height = Math.min(e.target.scrollHeight, 200) + "px";
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
@@ -390,6 +535,7 @@ export function HeliosController({
           disabled={!isReady || isUpsampling}
           rows={2}
           className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
+          style={{ maxHeight: 200, overflow: "auto" }}
         />
         <Button
           type="submit"
