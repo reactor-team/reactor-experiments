@@ -20,7 +20,11 @@ export default function Page() {
 
   // Fetch JWT token from server
   useEffect(() => {
-    fetch("/api/token")
+    fetch("/api/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    })
       .then((res) => {
         if (!res.ok) throw new Error();
         return res.json();

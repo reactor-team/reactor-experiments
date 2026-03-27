@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { fetchInsecureToken } from "@reactor-team/js-sdk";
+
+
 
 interface ApiKeyInputProps {
   onJwtTokenChange: (token: string | undefined) => void;
@@ -41,7 +42,19 @@ export function ApiKeyInput({
       setIsFetching(true);
       setError(null);
       try {
-        const token = await fetchInsecureToken(apiKey);
+        const res = await fetch("/api/token", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Reactor-API-Key": apiKey,
+          },
+          body: JSON.stringify({}),
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.error ?? `Token fetch failed: ${res.status}`);
+        }
+        const { jwt: token } = await res.json();
         onJwtTokenChange(token);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to fetch token");
