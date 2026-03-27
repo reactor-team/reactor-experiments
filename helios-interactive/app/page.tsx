@@ -16,11 +16,7 @@ export default function Home() {
 
   // Fetch token and config from server
   useEffect(() => {
-    fetch("/api/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
-    })
+    fetch("/api/token", { method: "POST" })
       .then((res) => {
         if (!res.ok) throw new Error();
         return res.json();

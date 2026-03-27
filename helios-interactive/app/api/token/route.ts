@@ -1,13 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const DEFAULT_API_URL = "https://api.reactor.inc";
+const API_URL = "https://api.reactor.inc";
 
 export async function POST(request: NextRequest) {
   const clientKey = request.headers.get("Reactor-API-Key");
-  const { baseUrl } = await request.json().catch(() => ({ baseUrl: undefined }));
-
   const apiKey = clientKey || process.env.REACTOR_API_KEY;
-  const apiUrl = baseUrl || process.env.NEXT_PUBLIC_COORDINATOR_URL || DEFAULT_API_URL;
 
   if (!apiKey) {
     return NextResponse.json(
@@ -16,7 +13,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const response = await fetch(`${apiUrl}/tokens`, {
+  const response = await fetch(`${API_URL}/tokens`, {
     method: "POST",
     headers: { "Reactor-API-Key": apiKey },
   });
