@@ -1,18 +1,23 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
-export async function GET() {
-  const apiKey = process.env.REACTOR_API_KEY;
-  const apiUrl = process.env.NEXT_PUBLIC_COORDINATOR_URL || "https://api.reactor.inc";
+const DEFAULT_API_URL = "https://api.reactor.inc";
+
+export async function POST(request: NextRequest) {
+  const clientKey = request.headers.get("Reactor-API-Key");
+  const { baseUrl } = await request.json().catch(() => ({ baseUrl: undefined }));
+
+  const apiKey = clientKey || process.env.REACTOR_API_KEY;
+  const apiUrl = baseUrl || process.env.NEXT_PUBLIC_COORDINATOR_URL || DEFAULT_API_URL;
 
   if (!apiKey) {
     return NextResponse.json(
-      { error: "REACTOR_API_KEY is not configured" },
-      { status: 404 },
+      { error: "No API key provided and REACTOR_API_KEY is not configured" },
+      { status: 400 },
     );
   }
 
   const response = await fetch(`${apiUrl}/tokens`, {
-    method: "GET",
+    method: "POST",
     headers: { "Reactor-API-Key": apiKey },
   });
 
