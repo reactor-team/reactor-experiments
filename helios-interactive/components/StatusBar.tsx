@@ -38,7 +38,7 @@ export function StatusBar({ tokenError }: StatusBarProps) {
             !tokenError && status === "ready" && "bg-green-500",
           )}
         />
-        <span className="text-[11px] text-muted-foreground">
+        <span className="text-xs text-muted-foreground">
           {tokenError || statusLabel}
         </span>
       </div>

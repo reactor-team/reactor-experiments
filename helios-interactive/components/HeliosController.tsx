@@ -376,20 +376,27 @@ export function HeliosController({
       </div>
 
       {/* Manual Input */}
-      <form onSubmit={handleManualSubmit} className="flex gap-2">
-        <Input
-          type="text"
+      <form onSubmit={handleManualSubmit} className="space-y-2">
+        <textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
-          placeholder="Or write your own prompt..."
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              handleManualSubmit(e);
+            }
+          }}
+          placeholder={currentFrame > 0 ? "Add to the scene..." : "Or write your own story..."}
           disabled={!isReady || isUpsampling}
-          className="flex-1 h-8 text-sm"
+          rows={2}
+          className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
         />
         <Button
           type="submit"
           size="sm"
           variant="default"
           disabled={!prompt.trim() || !isReady || isUpsampling}
+          className="w-full"
         >
           {isUpsampling ? "Enhancing..." : "Send"}
         </Button>

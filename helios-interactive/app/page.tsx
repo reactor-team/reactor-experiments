@@ -65,8 +65,8 @@ export default function Home() {
                   <div
                     className={`w-2 h-2 rounded-full ${hasEnhancement ? "bg-green-500" : "bg-muted-foreground"}`}
                   />
-                  <span className="text-[11px] text-muted-foreground">
-                    Prompt enhancement {hasEnhancement ? "on" : "off"}
+                  <span className="text-xs text-muted-foreground">
+                    Prompt enhancement {hasEnhancement ? "enabled" : "off"}
                   </span>
                 </div>
               )}
