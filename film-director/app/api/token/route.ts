@@ -1,18 +1,19 @@
 import { NextResponse } from "next/server";
 
-export async function GET() {
+const API_URL = "https://api.reactor.inc";
+
+export async function POST() {
   const apiKey = process.env.REACTOR_API_KEY;
-  const apiUrl = process.env.NEXT_PUBLIC_COORDINATOR_URL || "https://api.reactor.inc";
 
   if (!apiKey) {
     return NextResponse.json(
       { error: "REACTOR_API_KEY is not configured" },
-      { status: 404 },
+      { status: 500 },
     );
   }
 
-  const response = await fetch(`${apiUrl}/tokens`, {
-    method: "GET",
+  const response = await fetch(`${API_URL}/tokens`, {
+    method: "POST",
     headers: { "Reactor-API-Key": apiKey },
   });
 
