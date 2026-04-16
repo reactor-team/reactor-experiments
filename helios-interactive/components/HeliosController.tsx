@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useReactor, useReactorMessage } from "@reactor-team/js-sdk";
+import { useReactor, useReactorMessage, FileRef } from "@reactor-team/js-sdk";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PromptSuggestions } from "./PromptSuggestions";
@@ -38,8 +38,15 @@ interface EventMessage {
   };
 }
 
-type HeliosMessage = StateMessage | EventMessage;
+interface ConditionsReadyMessage {
+  type: "conditions_ready";
+  data: { has_image?: boolean };
+}
 
+type HeliosMessage = StateMessage | EventMessage | ConditionsReadyMessage;
+
+// Small base64 thumbnail for the /api/upsample LLM call.
+// SDK uploads send the full-quality file separately; this is for prompt context only.
 function downsampleImage(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -128,13 +135,17 @@ export function HeliosController({
   const skipUpsampleRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  /** File chosen before connect — uploaded once the session is ready */
+  const pendingFileRef = useRef<File | null>(null);
+  const imageReadyResolversRef = useRef<Array<() => void>>([]);
   const currentChunkRef = useRef(0);
   const currentFrameRef = useRef(0);
   const isResettingRef = useRef(false);
 
-  const { sendCommand, status } = useReactor((state) => ({
+  const { sendCommand, status, uploadFile } = useReactor((state) => ({
     sendCommand: state.sendCommand,
     status: state.status,
+    uploadFile: state.uploadFile,
   }));
 
   // Listen for messages from the Helios model
@@ -157,9 +168,25 @@ export function HeliosController({
       currentFrameRef.current = state.current_frame;
       setCurrentPrompt(state.current_prompt);
     }
+    if (message?.type === "conditions_ready" && message.data?.has_image) {
+      const resolvers = imageReadyResolversRef.current;
+      imageReadyResolversRef.current = [];
+      resolvers.forEach((r) => r());
+    }
   });
 
+  const waitForImageReady = useCallback(
+    (timeoutMs = 5000) =>
+      new Promise<void>((resolve) => {
+        imageReadyResolversRef.current.push(resolve);
+        setTimeout(resolve, timeoutMs);
+      }),
+    [],
+  );
+
   const resetUIState = () => {
+    imageReadyResolversRef.current.forEach((r) => r());
+    imageReadyResolversRef.current = [];
     setPrompt("");
     setCurrentFrame(0);
     setCurrentChunk(0);
@@ -173,6 +200,7 @@ export function HeliosController({
     setRefPreview(null);
     setSelectedExample(null);
     setIsStarting(false);
+    pendingFileRef.current = null;
   };
 
   // Reset when disconnected
@@ -190,6 +218,21 @@ export function HeliosController({
       el.style.height = Math.min(el.scrollHeight, 300) + "px";
     }
   }, [prompt]);
+
+  // Flush a pending image upload once the session becomes ready
+  useEffect(() => {
+    if (status !== "ready" || !pendingFileRef.current) return;
+    const file = pendingFileRef.current;
+    pendingFileRef.current = null;
+    (async () => {
+      try {
+        const ref = await uploadFile(file);
+        await sendCommand("set_image", { image: ref });
+      } catch {
+        console.error("Failed to flush pending image upload");
+      }
+    })();
+  }, [status, uploadFile, sendCommand]);
 
   const handleExampleImage = async (imageSrc: string, imagePrompt: string) => {
     setIsStarting(true);
@@ -210,9 +253,15 @@ export function HeliosController({
             const res = await fetch(dataUrl);
             const blob = await res.blob();
             const file = new File([blob], "example.jpg", { type: "image/jpeg" });
-            const base64 = await downsampleImage(file);
-            setReferenceImage(base64);
-            await sendCommand("set_image", { image_b64: base64 });
+            // Small thumbnail for LLM upsample context
+            setReferenceImage(await downsampleImage(file));
+            if (status === "ready") {
+              const ref = await uploadFile(file);
+              await sendCommand("set_image", { image: ref });
+              await waitForImageReady();
+            } else {
+              pendingFileRef.current = file;
+            }
             await handleSubmitPrompt(imagePrompt);
             resolve();
           } catch (err) {
@@ -232,17 +281,22 @@ export function HeliosController({
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const preview = URL.createObjectURL(file);
-    setRefPreview(preview);
-    const base64 = await downsampleImage(file);
-    setReferenceImage(base64);
-    await sendCommand("set_image", { image_b64: base64 });
+    setRefPreview(URL.createObjectURL(file));
+    // Small base64 thumbnail kept for the /api/upsample LLM call
+    setReferenceImage(await downsampleImage(file));
+    if (status === "ready") {
+      const ref = await uploadFile(file);
+      await sendCommand("set_image", { image: ref });
+    } else {
+      pendingFileRef.current = file;
+    }
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const clearRefImage = async () => {
     setReferenceImage(null);
     setRefPreview(null);
+    pendingFileRef.current = null;
     try {
       await sendCommand("clear_image", {});
     } catch {}
