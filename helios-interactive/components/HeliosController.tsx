@@ -47,42 +47,40 @@ type HeliosMessage = StateMessage | EventMessage | ConditionsReadyMessage;
 
 // Small base64 thumbnail for the /api/upsample LLM call.
 // SDK uploads send the full-quality file separately; this is for prompt context only.
-function downsampleImage(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      let quality = 0.7,
-        maxW = 512,
-        maxH = 512,
-        result = "";
-      for (let i = 0; i < 5; i++) {
-        let w = img.width,
-          h = img.height;
-        if (w > maxW || h > maxH) {
-          const s = Math.min(maxW / w, maxH / h);
-          w = Math.round(w * s);
-          h = Math.round(h * s);
-        }
-        const c = document.createElement("canvas");
-        c.width = w;
-        c.height = h;
-        const ctx = c.getContext("2d")!;
-        ctx.drawImage(img, 0, 0, w, h);
-        result = c.toDataURL("image/jpeg", quality);
-        if (
-          Math.ceil((result.length - result.indexOf(",") - 1) * 0.75) <
-          64 * 1024
-        )
-          break;
-        maxW = Math.round(maxW * 0.75);
-        maxH = Math.round(maxH * 0.75);
-        quality = Math.max(0.3, quality - 0.1);
+async function downsampleImage(file: File): Promise<string> {
+  const bmp = await createImageBitmap(file);
+  try {
+    let quality = 0.7,
+      maxW = 512,
+      maxH = 512,
+      result = "";
+    for (let i = 0; i < 5; i++) {
+      let w = bmp.width,
+        h = bmp.height;
+      if (w > maxW || h > maxH) {
+        const s = Math.min(maxW / w, maxH / h);
+        w = Math.round(w * s);
+        h = Math.round(h * s);
       }
-      resolve(result);
-    };
-    img.onerror = reject;
-    img.src = URL.createObjectURL(file);
-  });
+      const c = document.createElement("canvas");
+      c.width = w;
+      c.height = h;
+      const ctx = c.getContext("2d")!;
+      ctx.drawImage(bmp, 0, 0, w, h);
+      result = c.toDataURL("image/jpeg", quality);
+      if (
+        Math.ceil((result.length - result.indexOf(",") - 1) * 0.75) <
+        64 * 1024
+      )
+        break;
+      maxW = Math.round(maxW * 0.75);
+      maxH = Math.round(maxH * 0.75);
+      quality = Math.max(0.3, quality - 0.1);
+    }
+    return result;
+  } finally {
+    bmp.close();
+  }
 }
 
 function ExpandablePrompt({ prompt }: { prompt: string }) {
