@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { ReactorProvider, ReactorView } from "@reactor-team/js-sdk";
+import { HeliosProvider, HeliosVideoView } from "@/lib/helios-react";
 import { HeaderControls } from "@/components/HeaderControls";
 import { StatusBar } from "@/components/StatusBar";
 import { HeliosController } from "@/components/HeliosController";
@@ -36,11 +36,7 @@ export default function Home() {
 
   return (
     <div className="h-screen flex flex-col bg-background text-foreground overflow-hidden">
-      <ReactorProvider
-        modelName="helios"
-        jwtToken={jwtToken}
-        connectOptions={{ autoConnect: false }}
-      >
+      <HeliosProvider jwtToken={jwtToken}>
         {/* Header */}
         <HeaderControls />
 
@@ -81,11 +77,11 @@ export default function Home() {
           {/* Right: Video */}
           <div className="flex-1 min-h-0 min-w-0 p-3 md:p-4 flex items-center justify-center">
             <div className="relative bg-black rounded-lg overflow-hidden border border-border w-full h-full max-h-full">
-              <ReactorView className="absolute inset-0 w-full h-full" videoObjectFit="cover" />
+              <HeliosVideoView className="absolute inset-0 w-full h-full" videoObjectFit="cover" />
             </div>
           </div>
         </main>
-      </ReactorProvider>
+      </HeliosProvider>
     </div>
   );
 }

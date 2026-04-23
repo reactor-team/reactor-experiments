@@ -11,9 +11,9 @@ importers:
       '@radix-ui/react-tooltip':
         specifier: ^1.2.8
         version: 1.2.8(@types/react-dom@19.2.1(@types/react@19.2.2))(@types/react@19.2.2)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@reactor-team/js-sdk':
-        specifier: 2.9.0
-        version: 2.9.0(@types/node@20.19.19)(react@19.1.0)(zustand@5.0.10(@types/react@19.2.2)(react@19.1.0)(use-sync-external-store@1.6.0(react@19.1.0)))
+      '@reactor-models/helios':
+        specifier: ^0.8.4
+        version: 0.8.4(@types/node@20.19.19)(react@19.1.0)(zustand@5.0.10(@types/react@19.2.2)(react@19.1.0)(use-sync-external-store@1.6.0(react@19.1.0)))
       '@reactor-team/ui':
         specifier: ^1.0.1
         version: 1.0.1(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -1241,8 +1241,11 @@ packages:
   '@radix-ui/rect@1.1.1':
     resolution: {integrity: sha512-HPwpGIzkl28mWyZqG52jiqDJ12waP11Pa1lGoiyUkIEuMLBP0oeK/C89esbXrxsky5we7dfd8U58nm0SgAWpVw==}
 
-  '@reactor-team/js-sdk@2.9.0':
-    resolution: {integrity: sha512-5kGVoFbh/lscBGaWV/v/Cfn68NnyPGYTvgQlUTziPjbDEfmL3M6lEKJlFuEKvqS4cK+vSsnNyW4DxaOwc1GzeA==}
+  '@reactor-models/helios@0.8.4':
+    resolution: {integrity: sha512-AqLp6gjHYUdQbt0PL0RHWMnxivxKJhuKxx7hGEsuNwTvTtDHicH6wAskU3Rw+5QGGdlxCDQP32pdQdYeUULB8A==}
+
+  '@reactor-team/js-sdk@2.9.1':
+    resolution: {integrity: sha512-NhykRUOQjb7SdLiNVO043MnEp9epXczXafLVbm1piXDFuDQkvf0k6CkUa4fsj1WGAkIKCuTHWf2dbf4NiaFxSg==}
     peerDependencies:
       react: ^17.0.0 || ^18.0.0 || ^19.0.0
       zustand: ^5.0.6
@@ -4141,7 +4144,18 @@ snapshots:
 
   '@radix-ui/rect@1.1.1': {}
 
-  '@reactor-team/js-sdk@2.9.0(@types/node@20.19.19)(react@19.1.0)(zustand@5.0.10(@types/react@19.2.2)(react@19.1.0)(use-sync-external-store@1.6.0(react@19.1.0)))':
+  '@reactor-models/helios@0.8.4(@types/node@20.19.19)(react@19.1.0)(zustand@5.0.10(@types/react@19.2.2)(react@19.1.0)(use-sync-external-store@1.6.0(react@19.1.0)))':
+    dependencies:
+      '@reactor-team/js-sdk': 2.9.1(@types/node@20.19.19)(react@19.1.0)(zustand@5.0.10(@types/react@19.2.2)(react@19.1.0)(use-sync-external-store@1.6.0(react@19.1.0)))
+    transitivePeerDependencies:
+      - '@types/node'
+      - bufferutil
+      - react
+      - supports-color
+      - utf-8-validate
+      - zustand
+
+  '@reactor-team/js-sdk@2.9.1(@types/node@20.19.19)(react@19.1.0)(zustand@5.0.10(@types/react@19.2.2)(react@19.1.0)(use-sync-external-store@1.6.0(react@19.1.0)))':
     dependencies:
       '@bufbuild/protobuf': 2.11.0
       chalk: 5.6.2

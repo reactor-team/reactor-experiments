@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useReactor, useReactorMessage, FileRef } from "@reactor-team/js-sdk";
+import { useHelios, useHeliosMessage } from "@/lib/helios-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PromptSuggestions } from "./PromptSuggestions";
@@ -12,38 +12,6 @@ interface HeliosControllerProps {
   className?: string;
   hasEnhancement?: boolean;
 }
-
-// Types for the Helios model message protocol
-interface ModelState {
-  current_frame: number;
-  current_chunk: number;
-  current_prompt: string | null;
-  paused: boolean;
-  scheduled_prompts: Record<number, string>;
-}
-
-interface StateMessage {
-  type: "state";
-  data: ModelState;
-}
-
-interface EventMessage {
-  type: "event";
-  data: {
-    event: string;
-    frame?: number;
-    message?: string;
-    new_prompt?: string;
-    previous_prompt?: string;
-  };
-}
-
-interface ConditionsReadyMessage {
-  type: "conditions_ready";
-  data: { has_image?: boolean };
-}
-
-type HeliosMessage = StateMessage | EventMessage | ConditionsReadyMessage;
 
 // Small base64 thumbnail for the /api/upsample LLM call.
 // SDK uploads send the full-quality file separately; this is for prompt context only.
@@ -140,33 +108,32 @@ export function HeliosController({
   const currentFrameRef = useRef(0);
   const isResettingRef = useRef(false);
 
-  const { sendCommand, status, uploadFile } = useReactor((state) => ({
-    sendCommand: state.sendCommand,
-    status: state.status,
-    uploadFile: state.uploadFile,
-  }));
+  const { helios, status } = useHelios();
 
   // Listen for messages from the Helios model
-  useReactorMessage((message: HeliosMessage) => {
-    if (message?.type === "state") {
-      const state = message.data;
-
+  useHeliosMessage((message) => {
+    if (message.type === "state") {
       // After reset, ignore stale state messages until frame is back to 0
       if (isResettingRef.current) {
-        if (state.current_frame === 0) {
+        if (message.current_frame === 0) {
           isResettingRef.current = false;
         } else {
           return;
         }
       }
 
-      setCurrentFrame(state.current_frame);
-      setCurrentChunk(state.current_chunk);
-      currentChunkRef.current = state.current_chunk;
-      currentFrameRef.current = state.current_frame;
-      setCurrentPrompt(state.current_prompt);
+      setCurrentFrame(message.current_frame);
+      setCurrentChunk(message.current_chunk);
+      currentChunkRef.current = message.current_chunk;
+      currentFrameRef.current = message.current_frame;
+      // current_prompt is typed as `unknown` in the SDK; coerce to string | null.
+      setCurrentPrompt(
+        typeof message.current_prompt === "string"
+          ? message.current_prompt
+          : null,
+      );
     }
-    if (message?.type === "conditions_ready" && message.data?.has_image) {
+    if (message.type === "conditions_ready" && message.has_image) {
       const resolvers = imageReadyResolversRef.current;
       imageReadyResolversRef.current = [];
       resolvers.forEach((r) => r());
@@ -224,13 +191,13 @@ export function HeliosController({
     pendingFileRef.current = null;
     (async () => {
       try {
-        const ref = await uploadFile(file);
-        await sendCommand("set_image", { image: ref });
+        const ref = await helios.uploadFile(file);
+        await helios.setImage({ image: ref });
       } catch {
         console.error("Failed to flush pending image upload");
       }
     })();
-  }, [status, uploadFile, sendCommand]);
+  }, [status, helios]);
 
   const handleExampleImage = async (imageSrc: string, imagePrompt: string) => {
     setIsStarting(true);
@@ -254,8 +221,8 @@ export function HeliosController({
             // Small thumbnail for LLM upsample context
             setReferenceImage(await downsampleImage(file));
             if (status === "ready") {
-              const ref = await uploadFile(file);
-              await sendCommand("set_image", { image: ref });
+              const ref = await helios.uploadFile(file);
+              await helios.setImage({ image: ref });
               await waitForImageReady();
             } else {
               pendingFileRef.current = file;
@@ -283,8 +250,8 @@ export function HeliosController({
     // Small base64 thumbnail kept for the /api/upsample LLM call
     setReferenceImage(await downsampleImage(file));
     if (status === "ready") {
-      const ref = await uploadFile(file);
-      await sendCommand("set_image", { image: ref });
+      const ref = await helios.uploadFile(file);
+      await helios.setImage({ image: ref });
     } else {
       pendingFileRef.current = file;
     }
@@ -296,7 +263,9 @@ export function HeliosController({
     setRefPreview(null);
     pendingFileRef.current = null;
     try {
-      await sendCommand("clear_image", {});
+      // No typed method for clear_image on HeliosModel v0.8.4; use the Reactor
+      // escape hatch until the SDK adds a typed `clearImage()`.
+      await helios.reactor.sendCommand("clear_image", {});
     } catch {}
   };
 
@@ -307,12 +276,12 @@ export function HeliosController({
 
     if (currentFrameRef.current === 0) {
       // First prompt: set_prompt then start
-      await sendCommand("set_prompt", { prompt: promptText.trim() });
-      await sendCommand("start", {});
+      await helios.setPrompt({ prompt: promptText.trim() });
+      await helios.start();
     } else {
       // Follow-up prompt: schedule at current chunk + 2
       const chunk = currentChunkRef.current + 2;
-      await sendCommand("schedule_prompt", {
+      await helios.schedulePrompt({
         prompt: promptText.trim(),
         chunk,
       });
@@ -388,9 +357,9 @@ export function HeliosController({
 
   const handleReset = useCallback(async () => {
     isResettingRef.current = true;
-    await sendCommand("reset", {});
+    await helios.reset();
     resetUIState();
-  }, [sendCommand]);
+  }, [helios]);
 
   const isReady = status === "ready";
 
