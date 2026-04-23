@@ -136,6 +136,20 @@ Old `ReactorProvider` accepted `connectOptions={{ autoConnect: false }}` to prev
 
 ---
 
+## Coverage notes
+
+All code paths listed below were exercised live in a dev-server session against the production API:
+
+- `helios.connect(jwt)` / `helios.disconnect()` — status transitions `disconnected → connecting → waiting → ready → disconnected`
+- `helios.setPrompt({ prompt })` + `helios.start()` — first-prompt flow
+- `helios.schedulePrompt({ prompt, chunk })` — follow-up flow (triggered by switching stories while generation was running)
+- `helios.uploadFile(file)` + `helios.setImage({ image: ref })` — both via the example-image button (File built in-memory from a fetched URL) and via the real hidden `<input type="file">` using chrome-devtools' upload facility
+- `helios.reset()` — session clears, chunk counter returns to 0
+- `helios.reactor.sendCommand("clear_image", {})` escape hatch — visually verified that the reference image anchor was removed (next prompt's output no longer resembled the uploaded image)
+- `useHeliosMessage` with the flatten workaround — `current_frame`, `current_chunk`, `current_prompt`, and `conditions_ready.has_image` all read correctly; a `command_error` wire-sniffer installed mid-session observed zero errors
+
+The workarounds in this PR make the migration functional, but items #1 and #2 make it a meaningfully rough landing for a first-time consumer of the typed SDK.
+
 ## TL;DR priority for the SDK author
 
 1. **Ship the message transform** so `onMessage`'s handler arg actually matches `HeliosMessage`. This is silently wrong today.

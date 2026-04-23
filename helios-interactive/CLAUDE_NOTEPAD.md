@@ -85,7 +85,13 @@ Status enum strings match the old SDK (`disconnected | connecting | waiting | re
 - Migration of 4 consumer files was mechanical — call-site-by-call-site swap.
 - `pnpm build` clean on the first try.
 - Dev server smoke test: video rendered immediately (big win: `HeliosVideoView` worked first-try), but chunk counter stayed at 0 and "Now playing" didn't appear. Read `index.mjs`, confirmed the onMessage passthrough, added the flatten adapter. Second smoke-test run: chunks climbed to 99, prompt displayed, reset and disconnect both clean.
-- Did NOT exercise `setImage`/`uploadFile`/`clearImage`/`schedulePrompt` live in the browser (file-upload via chrome-devtools is awkward; the remaining paths all bottom out in `helios.reactor.sendCommand` with the same plumbing as the tested methods). Typecheck + build cover those paths.
+- Initial smoke test skipped `setImage`/`uploadFile`/`clearImage`/`schedulePrompt` for time. Came back and ran a second smoke pass covering all four:
+  - **`uploadFile` + `setImage`** via Village Puppy click — the video correctly anchored on the puppy image (rendered a golden-retriever scene matching the reference). This also exercises `conditions_ready` (which would never resolve if the flatten fix weren't in place — silent success signal).
+  - **`schedulePrompt`** via clicking Rainy Evening while generation was running — chunk counter stayed advancing, `current_prompt` swapped to the Rainy Evening text, visuals transitioned. Identical to the first-prompt path except for the sendCommand target.
+  - **`clear_image` escape hatch** via the Remove button — preview cleared instantly, generation kept running, subsequent prompt switch (King of the Jungle after clear) rendered without any residual puppy anchoring. Visual confirmation that the server accepted the clear.
+  - **File-picker upload path** via the real hidden `<input type="file">`, driven with chrome-devtools `upload_file` against the Upload button — preview appeared (blob URL), generation stayed healthy. Confirms the manual-upload branch is equivalent to the example-button branch.
+  - Installed a monkeypatch on `RTCDataChannel.prototype.addEventListener` mid-session to sniff for `command_error` messages on the wire. Zero observed across upload, setImage, schedulePrompt, clear_image, re-upload, and subsequent generation. (Caveat: the patch wraps new listener registrations — the data-channel listener was already bound before patching, so the sniffer is best-effort. The strongest signal is that the app behaved correctly end-to-end.)
+- No new SDK friction points discovered in the second smoke pass. All known friction (flatten, no typed clearImage, no React bindings, etc.) is already captured.
 
 ## Small things I noticed but didn't file
 
