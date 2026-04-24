@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { HeliosProvider, HeliosVideoView } from "@/lib/helios-react";
+import { HeliosProvider, HeliosMainVideoView } from "@reactor-models/helios";
 import { HeaderControls } from "@/components/HeaderControls";
 import { StatusBar } from "@/components/StatusBar";
 import { HeliosController } from "@/components/HeliosController";
+
 export default function Home() {
   const [jwtToken, setJwtToken] = useState<string | undefined>(undefined);
   const [tokenError, setTokenError] = useState<string | null>(null);
@@ -14,7 +15,6 @@ export default function Home() {
     document.documentElement.classList.add("dark");
   }, []);
 
-  // Fetch token and config from server
   useEffect(() => {
     fetch("/api/token", { method: "POST" })
       .then((res) => {
@@ -37,14 +37,10 @@ export default function Home() {
   return (
     <div className="h-screen flex flex-col bg-background text-foreground overflow-hidden">
       <HeliosProvider jwtToken={jwtToken}>
-        {/* Header */}
         <HeaderControls />
 
-        {/* Main content — side-by-side on desktop, stacked on mobile */}
         <main className="flex-1 min-h-0 flex flex-col md:flex-row">
-          {/* Left: Control panel */}
           <aside className="md:w-80 lg:w-96 md:h-full overflow-y-auto border-b md:border-b-0 md:border-r border-border shrink-0 flex flex-col">
-            {/* Status header */}
             <div className="px-3 md:px-4 py-3 border-b border-border space-y-3">
               <StatusBar tokenError={tokenError} />
               {tokenError ? (
@@ -68,16 +64,17 @@ export default function Home() {
               )}
             </div>
 
-            {/* Generation controls */}
             <div className="flex-1 overflow-y-auto p-3 md:p-4">
               <HeliosController hasEnhancement={hasEnhancement} />
             </div>
           </aside>
 
-          {/* Right: Video */}
           <div className="flex-1 min-h-0 min-w-0 p-3 md:p-4 flex items-center justify-center">
             <div className="relative bg-black rounded-lg overflow-hidden border border-border w-full h-full max-h-full">
-              <HeliosVideoView className="absolute inset-0 w-full h-full" videoObjectFit="cover" />
+              <HeliosMainVideoView
+                className="absolute inset-0 w-full h-full"
+                videoObjectFit="cover"
+              />
             </div>
           </div>
         </main>

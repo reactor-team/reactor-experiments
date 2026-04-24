@@ -1,6 +1,7 @@
 "use client";
 
-import { useHelios } from "@/lib/helios-react";
+import { useHelios } from "@reactor-models/helios";
+import { useReactor } from "@reactor-team/js-sdk";
 
 interface ReactorStatusProps {
   className?: string;
@@ -23,7 +24,9 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export function ReactorStatus({ className }: ReactorStatusProps) {
-  const { status, connect, disconnect } = useHelios();
+  const { status } = useHelios();
+  const connect = useReactor((s) => s.connect);
+  const disconnect = useReactor((s) => s.disconnect);
 
   return (
     <div className={`flex items-center gap-3 ${className}`}>
