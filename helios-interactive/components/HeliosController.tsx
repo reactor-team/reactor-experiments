@@ -1,49 +1,27 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useReactor, useReactorMessage, FileRef } from "@reactor-team/js-sdk";
+import {
+  useHelios,
+  useHeliosState,
+  useHeliosConditionsReady,
+} from "@reactor-models/helios";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { PromptSuggestions } from "./PromptSuggestions";
 import { cn } from "@/lib/utils";
 import type { StoryPrompt } from "@/lib/prompts";
+
+type Mode = "story" | "image";
 
 interface HeliosControllerProps {
   className?: string;
   hasEnhancement?: boolean;
 }
-
-// Types for the Helios model message protocol
-interface ModelState {
-  current_frame: number;
-  current_chunk: number;
-  current_prompt: string | null;
-  paused: boolean;
-  scheduled_prompts: Record<number, string>;
-}
-
-interface StateMessage {
-  type: "state";
-  data: ModelState;
-}
-
-interface EventMessage {
-  type: "event";
-  data: {
-    event: string;
-    frame?: number;
-    message?: string;
-    new_prompt?: string;
-    previous_prompt?: string;
-  };
-}
-
-interface ConditionsReadyMessage {
-  type: "conditions_ready";
-  data: { has_image?: boolean };
-}
-
-type HeliosMessage = StateMessage | EventMessage | ConditionsReadyMessage;
 
 // Small base64 thumbnail for the /api/upsample LLM call.
 // SDK uploads send the full-quality file separately; this is for prompt context only.
@@ -100,7 +78,7 @@ function ExpandablePrompt({ prompt }: { prompt: string }) {
           <p
             className={cn(
               "text-[11px] text-foreground/80 break-words",
-              !expanded && "line-clamp-2",
+              !expanded && "line-clamp-2"
             )}
           >
             {prompt}
@@ -118,6 +96,7 @@ export function HeliosController({
   className,
   hasEnhancement,
 }: HeliosControllerProps) {
+  const [mode, setMode] = useState<Mode>("story");
   const [prompt, setPrompt] = useState("");
   const [currentFrame, setCurrentFrame] = useState(0);
   const [currentChunk, setCurrentChunk] = useState(0);
@@ -140,33 +119,39 @@ export function HeliosController({
   const currentFrameRef = useRef(0);
   const isResettingRef = useRef(false);
 
-  const { sendCommand, status, uploadFile } = useReactor((state) => ({
-    sendCommand: state.sendCommand,
-    status: state.status,
-    uploadFile: state.uploadFile,
-  }));
+  const helios = useHelios();
+  const {
+    status,
+    setPrompt: setHeliosPrompt,
+    start,
+    schedulePrompt,
+    setImage,
+    reset,
+    uploadFile,
+  } = helios;
 
-  // Listen for messages from the Helios model
-  useReactorMessage((message: HeliosMessage) => {
-    if (message?.type === "state") {
-      const state = message.data;
-
-      // After reset, ignore stale state messages until frame is back to 0
-      if (isResettingRef.current) {
-        if (state.current_frame === 0) {
-          isResettingRef.current = false;
-        } else {
-          return;
-        }
+  useHeliosState((message) => {
+    // After reset, ignore stale state messages until frame is back to 0
+    if (isResettingRef.current) {
+      if (message.current_frame === 0) {
+        isResettingRef.current = false;
+      } else {
+        return;
       }
-
-      setCurrentFrame(state.current_frame);
-      setCurrentChunk(state.current_chunk);
-      currentChunkRef.current = state.current_chunk;
-      currentFrameRef.current = state.current_frame;
-      setCurrentPrompt(state.current_prompt);
     }
-    if (message?.type === "conditions_ready" && message.data?.has_image) {
+
+    setCurrentFrame(message.current_frame);
+    setCurrentChunk(message.current_chunk);
+    currentChunkRef.current = message.current_chunk;
+    currentFrameRef.current = message.current_frame;
+    // current_prompt is typed as `unknown` in the SDK; coerce to string | null.
+    setCurrentPrompt(
+      typeof message.current_prompt === "string" ? message.current_prompt : null
+    );
+  });
+
+  useHeliosConditionsReady((message) => {
+    if (message.has_image) {
       const resolvers = imageReadyResolversRef.current;
       imageReadyResolversRef.current = [];
       resolvers.forEach((r) => r());
@@ -179,7 +164,7 @@ export function HeliosController({
         imageReadyResolversRef.current.push(resolve);
         setTimeout(resolve, timeoutMs);
       }),
-    [],
+    []
   );
 
   const resetUIState = () => {
@@ -201,14 +186,31 @@ export function HeliosController({
     pendingFileRef.current = null;
   };
 
-  // Reset when disconnected
+  // Flip the input mode. Only callable when the model isn't generating (the
+  // toggle UI enforces that with a tooltip). Clears the outgoing mode's
+  // selection so context doesn't silently leak across — e.g. a stale
+  // `referenceImage` thumbnail shouldn't keep influencing prompt enhancement
+  // after the user switched to story mode.
+  const handleModeSwitch = (next: Mode) => {
+    if (next === mode) return;
+    if (next === "story") {
+      setReferenceImage(null);
+      setRefPreview(null);
+      setSelectedExample(null);
+      pendingFileRef.current = null;
+    } else {
+      setSelectedStoryId(null);
+      setCurrentStep(0);
+    }
+    setMode(next);
+  };
+
   useEffect(() => {
     if (status === "disconnected") {
       resetUIState();
     }
   }, [status]);
 
-  // Auto-resize textarea when prompt changes programmatically
   useEffect(() => {
     const el = textareaRef.current;
     if (el) {
@@ -217,7 +219,6 @@ export function HeliosController({
     }
   }, [prompt]);
 
-  // Flush a pending image upload once the session becomes ready
   useEffect(() => {
     if (status !== "ready" || !pendingFileRef.current) return;
     const file = pendingFileRef.current;
@@ -225,12 +226,12 @@ export function HeliosController({
     (async () => {
       try {
         const ref = await uploadFile(file);
-        await sendCommand("set_image", { image: ref });
+        await setImage({ image: ref });
       } catch {
         console.error("Failed to flush pending image upload");
       }
     })();
-  }, [status, uploadFile, sendCommand]);
+  }, [status, uploadFile, setImage]);
 
   const handleExampleImage = async (imageSrc: string, imagePrompt: string) => {
     setIsStarting(true);
@@ -250,12 +251,13 @@ export function HeliosController({
             const dataUrl = c.toDataURL("image/jpeg", 0.95);
             const res = await fetch(dataUrl);
             const blob = await res.blob();
-            const file = new File([blob], "example.jpg", { type: "image/jpeg" });
-            // Small thumbnail for LLM upsample context
+            const file = new File([blob], "example.jpg", {
+              type: "image/jpeg",
+            });
             setReferenceImage(await downsampleImage(file));
             if (status === "ready") {
               const ref = await uploadFile(file);
-              await sendCommand("set_image", { image: ref });
+              await setImage({ image: ref });
               await waitForImageReady();
             } else {
               pendingFileRef.current = file;
@@ -280,24 +282,26 @@ export function HeliosController({
     const file = e.target.files?.[0];
     if (!file) return;
     setRefPreview(URL.createObjectURL(file));
-    // Small base64 thumbnail kept for the /api/upsample LLM call
     setReferenceImage(await downsampleImage(file));
     if (status === "ready") {
       const ref = await uploadFile(file);
-      await sendCommand("set_image", { image: ref });
+      await setImage({ image: ref });
     } else {
       pendingFileRef.current = file;
     }
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const clearRefImage = async () => {
+  // Local UI reset only. Helios has no dedicated "clear image" event —
+  // `set_image` with an empty payload returns `CommandError("No image
+  // provided")` rather than wiping the reference — so the only way to
+  // actually drop the server-side reference is a full `reset()`, which
+  // the dedicated Reset button already covers. Clearing the preview
+  // thumbnail + pending-upload state is the right behaviour here.
+  const clearRefImage = () => {
     setReferenceImage(null);
     setRefPreview(null);
     pendingFileRef.current = null;
-    try {
-      await sendCommand("clear_image", {});
-    } catch {}
   };
 
   // Submit a prompt — first prompt uses set_prompt + start,
@@ -306,13 +310,11 @@ export function HeliosController({
     if (!promptText.trim()) return;
 
     if (currentFrameRef.current === 0) {
-      // First prompt: set_prompt then start
-      await sendCommand("set_prompt", { prompt: promptText.trim() });
-      await sendCommand("start", {});
+      await setHeliosPrompt({ prompt: promptText.trim() });
+      await start();
     } else {
-      // Follow-up prompt: schedule at current chunk + 2
       const chunk = currentChunkRef.current + 2;
-      await sendCommand("schedule_prompt", {
+      await schedulePrompt({
         prompt: promptText.trim(),
         chunk,
       });
@@ -321,7 +323,6 @@ export function HeliosController({
     setPreviousPrompt(promptText.trim());
   };
 
-  // Upsample a prompt using the server-side Anthropic API
   const upsamplePrompt = async (text: string): Promise<string> => {
     if (!hasEnhancement) return text;
 
@@ -363,7 +364,7 @@ export function HeliosController({
   const handlePromptSelect = async (
     storyId: string,
     storyPrompt: StoryPrompt,
-    step: number,
+    step: number
   ) => {
     setIsStarting(true);
     setSelectedStoryId(storyId);
@@ -381,27 +382,66 @@ export function HeliosController({
 
     const shouldSkip = skipUpsampleRef.current;
     skipUpsampleRef.current = false;
-    const finalPrompt = shouldSkip ? prompt.trim() : await upsamplePrompt(prompt.trim());
+    const finalPrompt = shouldSkip
+      ? prompt.trim()
+      : await upsamplePrompt(prompt.trim());
     await handleSubmitPrompt(finalPrompt);
     setPrompt("");
   };
 
   const handleReset = useCallback(async () => {
     isResettingRef.current = true;
-    await sendCommand("reset", {});
+    await reset();
     resetUIState();
-  }, [sendCommand]);
+  }, [reset]);
 
   const isReady = status === "ready";
+  // Generation is in-flight once either the first frame landed or an
+  // example image is mid-upload. Mode switching is locked in that window so
+  // the user can't mix a story branch into an image-anchored scene
+  // mid-render (or vice-versa) — which was the original UX trap.
+  const isGenerating = currentFrame > 0 || isStarting;
+  const modeLocked = isGenerating;
 
-  return (
+  const modeToggle = (
     <div
       className={cn(
-        "w-full space-y-3",
-        className,
+        "inline-flex rounded-md border border-border bg-muted/40 p-0.5",
+        modeLocked && "opacity-60"
       )}
+      role="tablist"
+      aria-label="Input mode"
     >
-      {/* Reset + chunk counter */}
+      {[
+        { id: "story" as const, label: "Story" },
+        { id: "image" as const, label: "Image" },
+      ].map(({ id, label }) => {
+        const isActive = mode === id;
+        return (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={isActive}
+            onClick={() => !modeLocked && handleModeSwitch(id)}
+            disabled={modeLocked}
+            className={cn(
+              "px-2.5 py-1 text-[11px] rounded transition-colors",
+              isActive
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+              modeLocked && "cursor-not-allowed"
+            )}
+          >
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  return (
+    <div className={cn("w-full space-y-3", className)}>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-muted">
           <span className="text-[10px] text-muted-foreground">Chunk</span>
@@ -419,161 +459,180 @@ export function HeliosController({
         </Button>
       </div>
 
-      {/* Current Prompt Display */}
-      {currentPrompt && (
-        <ExpandablePrompt prompt={currentPrompt} />
+      {currentPrompt && <ExpandablePrompt prompt={currentPrompt} />}
+
+      {/*
+        Mode toggle. The Radix tooltip doesn't reliably fire on a disabled
+        <button>, so when locked we wrap the whole pill group in a
+        TooltipTrigger — a plain <span> captures hover events that the
+        inner disabled buttons would otherwise swallow.
+      */}
+      {modeLocked ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span tabIndex={0} className="inline-block">
+              {modeToggle}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            Reset the generation first to switch modes.
+          </TooltipContent>
+        </Tooltip>
+      ) : (
+        modeToggle
       )}
 
-      {/* Story Suggestions */}
-      <PromptSuggestions
-        selectedStoryId={selectedStoryId}
-        currentStep={currentStep}
-        onPromptSelect={handlePromptSelect}
-        disabled={!isReady || isStarting}
-      />
+      {mode === "story" && (
+        <PromptSuggestions
+          selectedStoryId={selectedStoryId}
+          currentStep={currentStep}
+          onPromptSelect={handlePromptSelect}
+          disabled={!isReady || isStarting}
+        />
+      )}
 
-      {/* Example Images — always visible, highlight selected */}
-      <div className="space-y-1.5">
-        <span className="text-[11px] text-muted-foreground uppercase">
-          {selectedExample ? "Starting image" : "Or start from an image"}
-        </span>
-        <div className="grid grid-cols-2 gap-2">
-          {[
-            {
-              src: "/images/example_1.png",
-              title: "Village Puppy",
-              prompt:
-                "A fluffy golden retriever puppy wearing a small red bandana sits on a stone doorstep of a charming European village, number 12 on the blue wooden door behind it. The puppy has big round dark eyes and tilts its head slightly with curiosity. Warm afternoon sunlight fills the cobblestone street lined with colorful flower pots of red geraniums, purple hydrangeas, and pink blooms. Stone and pastel-painted buildings stretch into the background. Pixar-style 3D render with vibrant saturated colors. Medium close-up shot focusing on the puppy.",
-            },
-            {
-              src: "/images/example_2.png",
-              title: "Mars Explorer",
-              prompt:
-                "An astronaut in a weathered orange spacesuit crouches on the rust-red surface of Mars, reaching forward to brush dust off a strange dark rock formation with one gloved hand. The golden visor catches the pale Martian sun as the astronaut shifts weight and leans closer to inspect the find. A massive dust storm rolls in from the distance beyond deep canyon cliffs, sending plumes of brown haze across the amber sky. Wind tugs at loose straps on the suit. Photorealistic, desaturated warm tones, cinematic wide shot capturing the explorer mid-discovery on the vast desolate landscape.",
-            },
-          ].map((example) => {
-            const isSelected = selectedExample === example.src;
-            const isOther = selectedExample && !isSelected;
+      {mode === "image" && (
+        <>
+          <div className="space-y-1.5">
+            <span className="text-[11px] text-muted-foreground uppercase">
+              {selectedExample ? "Starting image" : "Start from an image"}
+            </span>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                {
+                  src: "/images/example_1.png",
+                  title: "Village Puppy",
+                  prompt:
+                    "A fluffy golden retriever puppy wearing a small red bandana sits on a stone doorstep of a charming European village, number 12 on the blue wooden door behind it. The puppy has big round dark eyes and tilts its head slightly with curiosity. Warm afternoon sunlight fills the cobblestone street lined with colorful flower pots of red geraniums, purple hydrangeas, and pink blooms. Stone and pastel-painted buildings stretch into the background. Pixar-style 3D render with vibrant saturated colors. Medium close-up shot focusing on the puppy.",
+                },
+                {
+                  src: "/images/example_2.png",
+                  title: "Mars Explorer",
+                  prompt:
+                    "An astronaut in a weathered orange spacesuit crouches on the rust-red surface of Mars, reaching forward to brush dust off a strange dark rock formation with one gloved hand. The golden visor catches the pale Martian sun as the astronaut shifts weight and leans closer to inspect the find. A massive dust storm rolls in from the distance beyond deep canyon cliffs, sending plumes of brown haze across the amber sky. Wind tugs at loose straps on the suit. Photorealistic, desaturated warm tones, cinematic wide shot capturing the explorer mid-discovery on the vast desolate landscape.",
+                },
+              ].map((example) => {
+                const isSelected = selectedExample === example.src;
+                const isOther = selectedExample && !isSelected;
 
-            return (
-              <button
-                key={example.src}
-                onClick={() =>
-                  !isSelected &&
-                  handleExampleImage(example.src, example.prompt)
-                }
-                disabled={!isReady || isSelected || isStarting}
-                className={cn(
-                  "group rounded-lg overflow-hidden border transition-all duration-300",
-                  isSelected
-                    ? "border-green-500/40 ring-1 ring-green-500/20"
-                    : isOther
-                      ? "border-border/50 opacity-40"
-                      : "border-border hover:border-foreground/20",
-                  (!isReady || isStarting) &&
-                    !isSelected &&
-                    "opacity-40 cursor-not-allowed",
-                )}
-              >
-                <div className="aspect-video relative">
+                return (
+                  <button
+                    key={example.src}
+                    onClick={() =>
+                      !isSelected &&
+                      handleExampleImage(example.src, example.prompt)
+                    }
+                    disabled={!isReady || isSelected || isStarting}
+                    className={cn(
+                      "group rounded-lg overflow-hidden border transition-all duration-300",
+                      isSelected
+                        ? "border-green-500/40 ring-1 ring-green-500/20"
+                        : isOther
+                          ? "border-border/50 opacity-40"
+                          : "border-border hover:border-foreground/20",
+                      (!isReady || isStarting) &&
+                        !isSelected &&
+                        "opacity-40 cursor-not-allowed"
+                    )}
+                  >
+                    <div className="aspect-video relative">
+                      <img
+                        src={example.src}
+                        alt={example.title}
+                        className="w-full h-full object-cover"
+                      />
+                      <div
+                        className={cn(
+                          "absolute inset-0 transition-colors duration-300",
+                          isSelected
+                            ? "bg-black/20"
+                            : "bg-black/40 group-hover:bg-black/20"
+                        )}
+                      />
+                      <span className="absolute bottom-1.5 left-2 text-[11px] font-medium text-white">
+                        {isSelected && "\u2713 "}
+                        {example.title}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleImageUpload}
+              disabled={!isReady}
+              className="hidden"
+            />
+            {refPreview ? (
+              <div className="flex items-center gap-2">
+                <div className="w-10 h-10 rounded-lg overflow-hidden border border-border shrink-0">
                   <img
-                    src={example.src}
-                    alt={example.title}
+                    src={refPreview}
+                    alt="Ref"
                     className="w-full h-full object-cover"
                   />
-                  <div
-                    className={cn(
-                      "absolute inset-0 transition-colors duration-300",
-                      isSelected
-                        ? "bg-black/20"
-                        : "bg-black/40 group-hover:bg-black/20",
-                    )}
-                  />
-                  <span className="absolute bottom-1.5 left-2 text-[11px] font-medium text-white">
-                    {isSelected && "\u2713 "}
-                    {example.title}
-                  </span>
                 </div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Reference Image */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          onChange={handleImageUpload}
-          disabled={!isReady}
-          className="hidden"
-        />
-        {refPreview ? (
-          <div className="flex items-center gap-2">
-            <div className="w-10 h-10 rounded-lg overflow-hidden border border-border shrink-0">
-              <img
-                src={refPreview}
-                alt="Ref"
-                className="w-full h-full object-cover"
-              />
-            </div>
-            <div className="flex flex-col gap-0.5">
+                <div className="flex flex-col gap-0.5">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={!isReady}
+                    className="text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors text-left"
+                  >
+                    Change image
+                  </button>
+                  <button
+                    type="button"
+                    onClick={clearRefImage}
+                    className="text-[11px] text-muted-foreground hover:text-destructive transition-colors text-left"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            ) : (
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={!isReady}
-                className="text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors text-left"
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-dashed border-border hover:border-foreground/20 hover:bg-muted/50 disabled:opacity-40 transition-colors"
               >
-                Change image
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="text-muted-foreground"
+                >
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                  <circle cx="8.5" cy="8.5" r="1.5" />
+                  <polyline points="21 15 16 10 5 21" />
+                </svg>
+                <span className="text-[11px] text-muted-foreground">
+                  Upload reference image
+                </span>
               </button>
-              <button
-                type="button"
-                onClick={clearRefImage}
-                className="text-[11px] text-muted-foreground hover:text-destructive transition-colors text-left"
-              >
-                Remove
-              </button>
-            </div>
+            )}
           </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={!isReady}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-dashed border-border hover:border-foreground/20 hover:bg-muted/50 disabled:opacity-40 transition-colors"
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="text-muted-foreground"
-            >
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-              <circle cx="8.5" cy="8.5" r="1.5" />
-              <polyline points="21 15 16 10 5 21" />
-            </svg>
-            <span className="text-[11px] text-muted-foreground">
-              Upload reference image
-            </span>
-          </button>
-        )}
-      </div>
+        </>
+      )}
 
-      {/* Manual Input */}
       <form onSubmit={handleManualSubmit} className="space-y-2">
         <textarea
           ref={textareaRef}
           value={prompt}
           onChange={(e) => {
             setPrompt(e.target.value);
-            // Auto-grow
             e.target.style.height = "auto";
             e.target.style.height = Math.min(e.target.scrollHeight, 200) + "px";
           }}
@@ -583,7 +642,13 @@ export function HeliosController({
               handleManualSubmit(e);
             }
           }}
-          placeholder={currentFrame > 0 ? "Add to the scene..." : "Or write your own story..."}
+          placeholder={
+            isGenerating
+              ? "Add to the scene..."
+              : mode === "story"
+                ? "Or write your own story..."
+                : "Describe the scene to generate..."
+          }
           disabled={!isReady || isUpsampling}
           rows={2}
           className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
@@ -600,10 +665,10 @@ export function HeliosController({
         </Button>
       </form>
 
-      {/* Enhancement hint */}
       {!hasEnhancement && (
         <p className="text-[10px] text-muted-foreground">
-          Add ANTHROPIC_API_KEY or OPENAI_API_KEY to .env.local for automatic prompt enhancement.
+          Add ANTHROPIC_API_KEY or OPENAI_API_KEY to .env.local for automatic
+          prompt enhancement.
         </p>
       )}
     </div>

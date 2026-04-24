@@ -9,7 +9,8 @@
   },
   "dependencies": {
     "@radix-ui/react-tooltip": "^1.2.8",
-    "@reactor-team/js-sdk": "2.9.0",
+    "@reactor-models/helios": "^0.8.5",
+    "@reactor-team/js-sdk": "^2.9.1",
     "@reactor-team/ui": "^1.0.1",
     "@vercel/analytics": "^1.5.0",
     "class-variance-authority": "^0.7.1",

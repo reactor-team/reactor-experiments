@@ -1,5 +1,6 @@
 "use client";
 
+import { useHelios } from "@reactor-models/helios";
 import { useReactor } from "@reactor-team/js-sdk";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -9,11 +10,9 @@ interface StatusBarProps {
 }
 
 export function StatusBar({ tokenError }: StatusBarProps) {
-  const { status, connect, disconnect } = useReactor((state) => ({
-    status: state.status,
-    connect: state.connect,
-    disconnect: state.disconnect,
-  }));
+  const { status } = useHelios();
+  const connect = useReactor((s) => s.connect);
+  const disconnect = useReactor((s) => s.disconnect);
 
   const isConnecting = status === "connecting" || status === "waiting";
 
